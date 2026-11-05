@@ -49,13 +49,13 @@ async function pasarDiariosATuCuenta() {
 async function importarDiarios() {
   await pasarDiariosATuCuenta();
   const s = db(), hoy = hoyMX(), hechos: string[] = ((await s.get("config/diarios", { type: "json" })) as string[]) || [];
-  const pend = Object.keys(diarios as Record<string, any[]>).filter(f => f <= hoy && !hechos.includes(f)).sort();
+  const pend = Object.keys(diarios as Record<string, any[]>).filter(f => f.slice(0, 10) <= hoy && !hechos.includes(f)).sort();
   if (!pend.length) return;
   const a = await autorDiarios();
   for (const f of pend) {
     const L = (diarios as Record<string, any[]>)[f] || [];
     await Promise.all(L.slice(0, 10).map((x, i) => {
-      const id = "d" + f.replace(/-/g, "") + "abcdefghij"[i];
+      const id = "d" + f.replace(/[^0-9]/g, "") + "abcdefghij"[i];
       return s.setJSON("poema/" + id, { id, titulo: txt(x.titulo, 120), texto: txt(x.texto, 8000), tema: TEMAS.includes(x.tema) ? x.tema : "libre", autor: a.slug, alias: a.alias, at: Date.now() + i, pubAt: 0, oros: 0, estado: "revision", casa: true }, { onlyIfNew: true });
     }));
   }
