@@ -16,7 +16,7 @@ const I = {
   dl: '<path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/>'
 };
 const ico = (k, fill) => `<svg viewBox="0 0 24 24" fill="${fill ? "currentColor" : "none"}" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${I[k]}</svg>`;
-const st = { poemas: [], dia: null, ready: false, tema: "", q: "", orden: "nuevos", sesion: LS.get("sesion", null), oros: LS.get("oros", []), size: LS.get("size", 22), centro: LS.get("centro", false) };
+const st = { poemas: [], dia: null, ready: false, tema: "", q: "", orden: "nuevos", sesion: LS.get("sesion", null), oros: LS.get("oros", []), size: LS.get("size", 20), centro: LS.get("centro", false) };
 const device = LS.get("device", null) || (() => { const d = "d" + crypto.getRandomValues(new Uint32Array(3)).join("-"); LS.set("device", d); return d; })();
 const byId = id => st.poemas.find(p => p.id === id);
 const fecha = t => new Date(t).toLocaleDateString("es-MX", { day: "numeric", month: "long", year: "numeric" });
@@ -92,9 +92,9 @@ function leer(id, p) {
     <div style="text-align:center;margin-top:10px"><span class="tema">${esc(TEMAS[p.tema] || "Libre")}</span></div>
     <h1>${esc(p.titulo)}</h1>
     <div class="au">de <a href="#/poeta/${esc(p.autor)}">${esc(p.alias)}</a> · ${fecha(p.pubAt)}</div>
-    <div class="poem ${st.centro ? "c" : ""}" id="poem" style="font-size:${st.size}px">${esc(p.texto)}</div>
+    <div class="poem" id="poem" style="font-size:${st.size}px">${esc(p.texto)}</div>
     <div class="fin">✦ ✦ ✦</div>
-    <div class="tsize"><button class="btn sm" data-sz="-2" aria-label="Letra más chica">A−</button><button class="btn sm" data-sz="2" aria-label="Letra más grande">A+</button><button class="btn sm" id="bC" aria-pressed="${st.centro}">Centrar versos</button></div>
+    <div class="tsize"><button class="btn sm" data-sz="-2" aria-label="Letra más chica">A−</button><button class="btn sm" data-sz="2" aria-label="Letra más grande">A+</button></div>
     <div class="bar"><button class="btn oro-b" id="bOro" aria-pressed="${dado}">${ico("oro", 1)}<span>${p.oros}</span></button><button class="btn" id="bImg">${ico("img")}Imagen</button><button class="btn" id="bSh">${ico("share")}Compartir</button></div>
   </div>`;
 }
@@ -102,7 +102,6 @@ function afterLeer(p) {
   $("#bk").onclick = () => history.length > 1 ? history.back() : (location.hash = "#/");
   if (!p) return;
   document.querySelectorAll("[data-sz]").forEach(b => b.onclick = () => { st.size = Math.max(16, Math.min(32, st.size + +b.dataset.sz)); LS.set("size", st.size); $("#poem").style.fontSize = st.size + "px"; });
-  $("#bC").onclick = e => { st.centro = !st.centro; LS.set("centro", st.centro); $("#poem").classList.toggle("c", st.centro); e.currentTarget.setAttribute("aria-pressed", st.centro); };
   $("#bOro").onclick = async e => {
     const b = e.currentTarget; b.disabled = true;
     try { const r = await api("oro/" + p.id, "POST", { device }); p.oros = r.oros; st.oros = r.dado ? [...new Set([...st.oros, p.id])] : st.oros.filter(x => x !== p.id); LS.set("oros", st.oros);
