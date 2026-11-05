@@ -2,7 +2,8 @@
 import { getStore } from "@netlify/blobs";
 import type { Config, Context } from "@netlify/functions";
 import diarios from "../../diarios.json" with { type: "json" };
-import { createHmac, timingSafeEqual, scryptSync, randomBytes } from "node:crypto";
+import webpush from "web-push";
+import { createHash, createHmac, timingSafeEqual, scryptSync, randomBytes } from "node:crypto";
 
 const db = () => getStore({ name: "versos", consistency: "strong" });
 const json = (d: unknown, status = 200) => Response.json(d, { status, headers: { "cache-control": "no-store" } });
@@ -61,6 +62,25 @@ async function importarDiarios() {
   const now = ((await s.get("config/diarios", { type: "json" })) as string[]) || [];
   await s.setJSON("config/diarios", [...new Set([...now, ...pend])].slice(-400));
 }
+/* ===== Avisos al celular (notificaciones push) ===== */
+const subKey = (endpoint: string) => "sub/" + createHash("sha256").update(endpoint).digest("hex").slice(0, 40);
+async function avisar(filtro: (s: any) => boolean, aviso: { title: string; body: string; url: string; tag: string }) {
+  const pub = Netlify.env.get("VAPID_PUBLIC"), priv = Netlify.env.get("VAPID_PRIVATE"); if (!pub || !priv) return;
+  webpush.setVapidDetails("https://versos-de-oro.netlify.app", pub, priv);
+  const S = (await all("sub/")).filter(filtro), store = db();
+  for (let i = 0; i < S.length; i += 50) await Promise.all(S.slice(i, i + 50).map(async x => {
+    try { await webpush.sendNotification(x.sub, JSON.stringify(aviso), { TTL: 86400 }); }
+    catch (e: any) { if (e?.statusCode === 404 || e?.statusCode === 410) await store.delete(subKey(x.sub.endpoint)); }
+  }));
+}
+// Cuando un poema sale publicado: aviso a todos (menos al autor) y al autor le decimos que ya salió. Si el poeta está en pausa o suspendido, no se avisa a nadie.
+async function anunciarPoema(x: any) {
+  const u = await db().get("poeta/" + x.autor, { type: "json" }) as any; if (!u || u.pausado || u.bloqueado) return;
+  await Promise.all([
+    avisar(s => s.poeta !== x.autor, { title: "✦ Nuevo poema en Versos de Oro", body: `«${x.titulo}» de ${x.alias}`, url: "/#/poema/" + x.id, tag: "poema-" + x.id }),
+    avisar(s => s.poeta === x.autor, { title: "Tu poema ya está publicado ✦", body: `«${x.titulo}» ya lo puede leer todo el mundo`, url: "/#/poema/" + x.id, tag: "mio-" + x.id })
+  ]);
+}
 const DEF = { revisar: true, diaManual: "" };
 async function settings() { return { ...DEF, ...(((await db().get("config/settings", { type: "json" })) as any) || {}) }; }
 async function mutate(key: string, fn: (v: any) => any) {
@@ -86,11 +106,25 @@ function poemaDelDia(L: any[], manual: string) {
 }
 
 export default async (req: Request, ctx: Context) => { try { return await route(req, ctx); } catch (e: any) { console.error(e); return fail(e?.message === "Intenta de nuevo" ? e.message : "Error del servidor. Intenta de nuevo.", 500); } };
-async function route(req: Request, _ctx: Context) {
+async function route(req: Request, ctx: Context) {
+  const luego = (p: Promise<unknown>) => { const q = p.catch(e => console.error("avisos", e)); if (typeof (ctx as any)?.waitUntil === "function") (ctx as any).waitUntil(q); return q; };
   const p = new URL(req.url).pathname.replace(/^\/api\/?/, "").split("/").filter(Boolean), M = req.method;
   const body = async () => { try { return await req.json(); } catch { return {}; } };
   if (!secret()) return fail("Falta configurar la app", 500);
   const me = () => { const t = verify((req.headers.get("authorization") || "").replace(/^Bearer /, "")); return t?.u ? t : null; };
+
+  /* ===== avisos ===== */
+  if (p[0] === "avisos") {
+    if (M === "GET" && p[1] === "clave") return json({ key: Netlify.env.get("VAPID_PUBLIC") || "" });
+    const b = await body(), sub = b.sub, ep = String(sub?.endpoint || "");
+    if (!/^https:\/\//.test(ep) || ep.length > 1000 || !sub?.keys?.p256dh || !sub?.keys?.auth) return fail("Aviso no válido");
+    if (M === "POST") {
+      const t = me(), adm = await isAdmin(req);
+      await db().setJSON(subKey(ep), { sub: { endpoint: ep, keys: { p256dh: String(sub.keys.p256dh).slice(0, 200), auth: String(sub.keys.auth).slice(0, 100) } }, poeta: t?.u || "", admin: adm, at: Date.now() });
+      return json({ ok: true, admin: adm });
+    }
+    if (M === "DELETE") { await db().delete(subKey(ep)); return json({ ok: true }); }
+  }
 
   /* ===== cuentas de poetas ===== */
   if (M === "POST" && p[0] === "registro") {
@@ -103,6 +137,7 @@ async function route(req: Request, _ctx: Context) {
     const u = { slug: s, alias, bio: txt(b.bio, 300), ciudad: txt(b.ciudad, 60), salt, hash: hash(pw, salt), at: Date.now() };
     const r = await db().setJSON("poeta/" + s, u, { onlyIfNew: true });
     if (!r.modified) return fail("Ese nombre de poeta ya existe. Prueba con otro.", 409);
+    luego(avisar(x => x.admin, { title: "🖋 Nuevo poeta en Versos de Oro", body: `${alias} se acaba de unir a la casa`, url: "/admin.html", tag: "poeta-" + s }));
     return json({ token: sign({ u: s, at: Date.now() }), poeta: pubPoeta(u), dueno: s === DUENO }, 201);
   }
   if (M === "POST" && p[0] === "entrar") {
@@ -171,12 +206,14 @@ async function route(req: Request, _ctx: Context) {
         if (mine >= 15) return fail("Llegaste al límite de 15 poemas por día. Sigue mañana.", 429);
         const id = Date.now().toString(36) + randomBytes(3).toString("hex");
         const x = { id, titulo, texto, tema, autor: u.slug, alias: u.alias, at: Date.now(), pubAt: estado === "publicado" ? Date.now() : 0, oros: 0, estado };
-        await db().setJSON("poema/" + id, x); return json({ poema: pubPoema(x) }, 201);
+        await db().setJSON("poema/" + id, x); if (estado === "publicado") luego(anunciarPoema(x));
+        return json({ poema: pubPoema(x) }, 201);
       }
       const id = String(p[2]).replace(/[^a-z0-9]/g, "");
-      let no = "";
-      const x = await mutate("poema/" + id, v => { if (v.autor !== u.slug) { no = "Ese poema no es tuyo"; return null; } return { ...v, titulo, texto, tema, estado, nota: "", pubAt: estado === "publicado" ? (v.pubAt || Date.now()) : v.pubAt, editado: Date.now() }; });
+      let no = "", antes = "";
+      const x = await mutate("poema/" + id, v => { antes = v.estado; if (v.autor !== u.slug) { no = "Ese poema no es tuyo"; return null; } return { ...v, titulo, texto, tema, estado, nota: "", pubAt: estado === "publicado" ? (v.pubAt || Date.now()) : v.pubAt, editado: Date.now() }; });
       if (!x) return fail("Ese poema no existe", 404); if (no) return fail(no, 403);
+      if (x.estado === "publicado" && antes !== "publicado") luego(anunciarPoema(x));
       return json({ poema: pubPoema(x) });
     }
     if (M === "DELETE" && p[1] === "poemas" && p[2]) {
@@ -193,19 +230,22 @@ async function route(req: Request, _ctx: Context) {
     if (p[1] === "resumen" && M === "GET") {
       const L = await all("poema/"), U = await all("poeta/"), s = await settings();
       const pub = L.filter(x => x.estado === "publicado"), dia = poemaDelDia(pub, s.diaManual);
-      return json({ pendientes: L.filter(x => x.estado === "revision").length, publicados: pub.length, poetas: U.length, oros: pub.reduce((a, x) => a + (x.oros || 0), 0), revisar: s.revisar,
+      const avisosN = (await db().list({ prefix: "sub/" })).blobs.length;
+      return json({ avisos: avisosN, pendientes: L.filter(x => x.estado === "revision").length, publicados: pub.length, poetas: U.length, oros: pub.reduce((a, x) => a + (x.oros || 0), 0), revisar: s.revisar,
         dia: dia ? { id: dia.id, titulo: dia.titulo, alias: dia.alias } : null,
         ultimos: L.sort((a, b) => b.at - a.at).slice(0, 8).map(x => ({ id: x.id, titulo: x.titulo, alias: x.alias, estado: x.estado, at: x.at })) });
     }
     if (p[1] === "poemas" && M === "GET") return json({ poemas: (await all("poema/")).sort((a, b) => b.at - a.at).map(pubPoema) });
     if (p[1] === "poemas" && p[2] && M === "PATCH") {
       const b = await body(), id = String(p[2]).replace(/[^a-z0-9]/g, "");
+      let antes = "";
       const x = await mutate("poema/" + id, v => {
-        const n = { ...v };
+        antes = v.estado; const n = { ...v };
         if (["publicado", "revision", "rechazado", "oculto"].includes(b.estado)) { n.estado = b.estado; if (b.estado === "publicado" && !v.pubAt) n.pubAt = Date.now(); }
         if (b.nota !== undefined) n.nota = txt(b.nota, 300);
         return n;
       });
+      if (x && x.estado === "publicado" && antes !== "publicado") luego(anunciarPoema(x));
       return x ? json({ poema: pubPoema(x) }) : fail("Ese poema no existe", 404);
     }
     if (p[1] === "poemas" && p[2] && M === "DELETE") { await db().delete("poema/" + String(p[2]).replace(/[^a-z0-9]/g, "")); return json({ ok: true }); }

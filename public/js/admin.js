@@ -36,6 +36,7 @@ function draw() {
       : tab === "poe" ? (U.length ? U.map(u => `<div class="adm"><div class="sw"><div><h3>${esc(u.alias)}</h3><small class="note">${esc(u.ciudad || "")} · ${u.poemas} poemas · ${u.oros} oros · desde ${new Date(u.at).toLocaleDateString("es-MX")}</small>${u.bio ? `<p class="note">${esc(u.bio)}</p>` : ""}</div>
           <div class="acts"><a class="btn sm" href="/#/poeta/${esc(u.slug)}" target="_blank">Ver</a><button class="btn sm" data-clv="${esc(u.slug)}" data-al="${esc(u.alias)}">Dar contraseña de acceso</button><button class="btn sm" data-pau="${esc(u.slug)}" data-v="${u.pausado ? "" : "1"}">${u.pausado ? "Quitar pausa" : "Pausar"}</button><button class="btn sm" data-blq="${esc(u.slug)}" data-v="${u.bloqueado ? "" : "1"}">${u.bloqueado ? "Reactivar" : "Suspender"}</button></div></div>${u.bloqueado ? `<span class="estado oculto" style="width:max-content">Suspendido: sus poemas no se ven</span>` : ""}${u.pausado ? `<span class="estado revision" style="width:max-content">En pausa: nadie ve sus poemas; él no se entera</span>` : ""}${u.temporal ? `<span class="estado revision" style="width:max-content">Tiene contraseña de acceso: aún no pone la suya</span>` : ""}</div>`).join("") : `<p class="empty">Aún no hay poetas registrados.</p>`)
       : `<div class="box"><div class="sw"><div><b>Revisar antes de publicar</b><p class="note">Si está prendido, cada poema nuevo o editado espera tu aprobación. Si lo apagas, se publican al instante (igual puedes retirarlos).</p></div><input type="checkbox" id="cRev" ${S.revisar ? "checked" : ""}></div></div>
+         <div class="box"><div class="sw"><div><b>🔔 Avisos al celular</b><p class="note">${R.avisos || 0} ${R.avisos === 1 ? "celular recibe" : "celulares reciben"} avisos. A todos les llega cada poema que publicas. A ti te llega además cuando se une un poeta nuevo.</p></div><button class="btn sm gold-b" id="bAv">Avisarme en este celular</button></div></div>
          <div class="box"><b>Poema del día</b><p class="note">${R.dia ? `Hoy: «${esc(R.dia.titulo)}» de ${esc(R.dia.alias)}.` : "Todavía no hay poemas publicados."} ${S.diaManual ? "Lo elegiste tú." : "Se elige solo entre los más queridos y cambia cada día."}</p>${S.diaManual ? `<button class="btn sm" id="bDiaAuto">Que se elija solo otra vez</button>` : `<p class="note">Para elegirlo tú, ve a «Poemas» y toca «Poema del día» en el que quieras.</p>`}</div>`}</div></div>`;
   if ($("#bOut")) $("#bOut").onclick = () => { try { localStorage.removeItem("vdo.admin"); } catch { } KEY = ""; login(); };
   document.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { tab = b.dataset.tab; draw(); });
@@ -69,6 +70,18 @@ function draw() {
   const cr = $("#cRev"); if (cr) cr.onchange = async () => { try { S = await A("settings", "PUT", { revisar: cr.checked }); toast(cr.checked ? "Ahora revisas cada poema antes de publicarse" : "Los poemas se publican al instante"); } catch (e) { toast(e.message); } };
   const ba = $("#bAll"); if (ba) ba.onclick = async () => { if (ba.dataset.k !== "1") { ba.dataset.k = "1"; ba.textContent = "¿Publicar todos? Toca otra vez"; return; } ba.disabled = true;
     try { for (const p of P.filter(x => x.estado === "revision")) await A("poemas/" + p.id, "PATCH", { estado: "publicado", nota: "" }); toast("Todos publicados ✦"); } catch (e) { toast(e.message); } load(); };
+  const av = $("#bAv"); if (av) av.onclick = async () => {
+    try {
+      if (!("PushManager" in window)) return toast("Este navegador no permite avisos. Abre la app instalada o Chrome.");
+      if (await Notification.requestPermission() !== "granted") return toast("No diste permiso para avisos");
+      const reg = await navigator.serviceWorker.register("/sw.js"); await navigator.serviceWorker.ready;
+      const { key } = await (await fetch("/api/avisos/clave")).json(), pad = "=".repeat((4 - key.length % 4) % 4), raw = atob((key + pad).replace(/-/g, "+").replace(/_/g, "/"));
+      const sub = (await reg.pushManager.getSubscription()) || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: Uint8Array.from(raw, c => c.charCodeAt(0)) });
+      const r = await fetch("/api/avisos", { method: "POST", headers: { "content-type": "application/json", ...(KEY ? { "x-admin-key": KEY } : DUENO ? { authorization: "Bearer " + SES.token } : {}) }, body: JSON.stringify({ sub: sub.toJSON() }) });
+      if (!r.ok) throw new Error("no se guardó"); try { localStorage.setItem("vdo.avisos", "true"); } catch { }
+      toast("Listo: este celular te avisará cuando se una un poeta 🔔"); load();
+    } catch (e) { toast("No se pudo: " + e.message); }
+  };
   const da = $("#bDiaAuto"); if (da) da.onclick = async () => { try { S = await A("settings", "PUT", { diaManual: "" }); load(); } catch (e) { toast(e.message); } };
 }
 function item(p, rev) {

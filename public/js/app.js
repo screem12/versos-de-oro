@@ -56,6 +56,7 @@ function home() {
     ${top.length ? `<h2 class="sec">Los más queridos</h2><div class="row">${top.map(card).join("")}</div>` : ""}
     ${poetas.length ? `<h2 class="sec">Poetas de la casa</h2><div class="chips">${poetas.map(u => `<a href="#/poeta/${u.slug}" style="text-transform:none">${esc(u.alias)} <span class="oro" style="margin-left:4px">${ico("oro", 1)}${u.oros}</span></a>`).join("")}</div>` : ""}
     <div class="box" style="margin-top:26px;text-align:center"><p style="font:600 italic 21px/1.45 var(--serif);margin:0 0 12px">¿Tienes versos guardados en un cuaderno?<br>Aquí los lee todo el mundo.</p><a class="btn gold-b" href="#/escribir">${ico("pen")}Publicar mi poema</a></div>
+    ${avisosBox()}
     ${installBox()}
   </div>`;
 }
@@ -181,7 +182,7 @@ function afterAcceso(modo, next) {
     try {
       const d = modo === "entrar" ? await api("entrar", "POST", { alias: $("#a_n").value, clave: $("#a_c").value })
         : await api("registro", "POST", { alias: $("#a_n").value, clave: $("#a_c").value, ciudad: $("#a_ci").value, bio: $("#a_b").value, web: $("#a_w").value });
-      st.sesion = d; LS.set("sesion", d);
+      st.sesion = d; LS.set("sesion", d); if (avisosOn()) suscribir(true);
       if (d.temporal) { const clave = $("#a_c").value; return nuevaClave(clave, () => load2().catch(() => { }).then(() => next ? next() : route())); }
       toast(modo === "entrar" ? "Bienvenido de vuelta, " + d.poeta.alias : "¡Bienvenido a la casa, " + d.poeta.alias + "!");
       load2().catch(() => { }).then(() => next ? next() : route());
@@ -211,6 +212,7 @@ async function cuaderno() {
       <div class="stats"><div><b>${pub.length}</b><small>Publicados</small></div><div><b>${oros}</b><small>Oros</small></div><div><b>${P.length - pub.length}</b><small>Otros</small></div></div>
       <div class="acts" style="justify-content:center;margin-top:8px"><a class="btn sm" href="#/poeta/${u.slug}">Ver mi perfil público</a><button class="btn sm" id="bPf">Editar perfil</button><button class="btn sm" id="bCl">Cambiar contraseña</button><button class="btn sm" id="bOut">Salir</button></div></div>
     ${d.dueno ? `<a class="box adminsw" href="/admin.html"><span class="ic">⚙</span><span><b>Modo administrador</b><br><small>Solo tú lo ves. Revisa, publica o deniega poemas, pausa poetas y elige el poema del día.</small></span><span class="go">Entrar ›</span></a>` : ""}
+    <div class="box" style="display:flex;align-items:center;gap:12px"><span style="font-size:22px">🔔</span><div style="flex:1"><b>Avisos al celular</b><br><small class="note" style="margin:0">${avisosOn() ? (d.dueno ? "Activados: te avisamos de poemas nuevos, cuando se publica uno tuyo y cuando se une un poeta." : "Activados: te avisamos de poemas nuevos y cuando se publica uno tuyo.") : "Entérate cuando se publica un poema nuevo o uno tuyo."}</small></div>${avisosOn() ? `<button class="btn sm" data-avisosoff>Quitar</button>` : `<button class="btn sm gold-b" data-avisos>Activar</button>`}</div>
     <form class="form box" id="cf" hidden novalidate><label>Contraseña actual<input id="c_a" type="password" autocomplete="current-password"></label><label>Contraseña nueva<input id="c_n" type="password" autocomplete="new-password" placeholder="Mínimo 6 caracteres"></label><label>Repite la nueva<input id="c_r" type="password" autocomplete="new-password"></label><p class="err" id="c_e"></p><button class="btn gold-b" type="submit">Cambiar contraseña</button></form>
     <form class="form box" id="pf" hidden><label>¿De dónde escribes?<input id="p_ci" maxlength="60" value="${esc(u.ciudad)}"></label><label>Unas palabras sobre ti<textarea id="p_b" rows="3" maxlength="300">${esc(u.bio)}</textarea></label><button class="btn gold-b" type="submit">Guardar</button></form>
     ${borr && (borr.texto || borr.titulo) ? `<div class="box"><b>Tienes un borrador sin publicar</b><p class="note">${esc(borr.titulo || "Sin título")}</p><a class="btn sm gold-b" href="#/escribir">Seguir escribiendo</a></div>` : ""}
@@ -265,6 +267,34 @@ function escribir(params) {
   };
 }
 
+/* ================= avisos al celular ================= */
+const pushOK = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+const avisosOn = () => pushOK() && Notification.permission === "granted" && LS.get("avisos", false);
+const b64 = s => { const p = "=".repeat((4 - s.length % 4) % 4), r = atob((s + p).replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from(r, c => c.charCodeAt(0)); };
+async function suscribir(silencio) {
+  if (!pushOK()) { if (!silencio) toast(/iphone|ipad/i.test(navigator.userAgent) ? "En iPhone primero agrégala a tu pantalla de inicio y ábrela desde ahí." : "Este navegador no permite avisos. Ábrela en Chrome."); return false; }
+  const perm = Notification.permission === "granted" ? "granted" : silencio ? "default" : await Notification.requestPermission();
+  if (perm !== "granted") { if (!silencio) toast(perm === "denied" ? "Bloqueaste los avisos. Actívalos en los ajustes del celular para esta app." : "No se activaron los avisos"); return false; }
+  try {
+    const reg = await navigator.serviceWorker.ready, { key } = await api("avisos/clave");
+    const sub = (await reg.pushManager.getSubscription()) || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64(key) });
+    await api("avisos", "POST", { sub: sub.toJSON() }, true); LS.set("avisos", true); return true;
+  } catch (e) { if (!silencio) toast("No se pudieron activar los avisos: " + e.message); return false; }
+}
+async function desuscribir() {
+  try { const reg = await navigator.serviceWorker.ready, sub = await reg.pushManager.getSubscription(); if (sub) { await api("avisos", "DELETE", { sub: sub.toJSON() }); await sub.unsubscribe(); } } catch { }
+  LS.set("avisos", false);
+}
+function avisosBox() {
+  if (avisosOn() || LS.get("avisosNo", false) || (pushOK() && Notification.permission === "denied")) return "";
+  return `<div class="box avisos"><span class="ic">🔔</span><div style="flex:1"><b>Que no se te escape ningún poema</b><br><small class="note" style="margin:0">Te avisamos al celular cada vez que se publica uno nuevo.</small></div><div class="acts" style="flex-direction:column;gap:6px"><button class="btn sm gold-b" data-avisos>Activar</button><button class="btn sm" data-avisosno style="border:0;background:none;padding:2px">Ahora no</button></div></div>`;
+}
+document.addEventListener("click", async e => {
+  const a = e.target.closest("[data-avisos]"); if (a) { a.disabled = true; if (await suscribir(false)) { toast("¡Listo! Te avisaremos de cada poema nuevo 🔔"); route(); } else a.disabled = false; }
+  if (e.target.closest("[data-avisosno]")) { LS.set("avisosNo", true); e.target.closest(".avisos").remove(); }
+  const off = e.target.closest("[data-avisosoff]"); if (off) { await desuscribir(); toast("Avisos desactivados"); route(); }
+});
+
 /* ================= instalar ================= */
 let deferred = null;
 addEventListener("beforeinstallprompt", e => { e.preventDefault(); deferred = e; const b = $("#bInst"); if (b) b.hidden = false; });
@@ -297,5 +327,5 @@ async function route() {
 }
 async function load2() { const d = await api("poemas", "GET", null, true); st.poemas = d.poemas; st.dia = d.dia; }
 addEventListener("hashchange", route);
-if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => { }));
+if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("/sw.js").then(() => { if (avisosOn()) suscribir(true); }).catch(() => { }));
 load();
