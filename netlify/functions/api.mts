@@ -8,9 +8,13 @@ const db = () => getStore({ name: "versos", consistency: "strong" });
 const json = (d: unknown, status = 200) => Response.json(d, { status, headers: { "cache-control": "no-store" } });
 const fail = (m: string, status = 400) => json({ error: m }, status);
 const secret = () => Netlify.env.get("AUTH_SECRET") || "";
+// Tu cuenta de poeta (MR.CH) es la única que también entra como administrador; las demás son cuentas normales.
+const DUENO = "mr-ch";
 function isAdmin(req: Request) {
   const k = Netlify.env.get("ADMIN_KEY"), got = req.headers.get("x-admin-key") || "";
-  return !!k && got.length === k.length && timingSafeEqual(Buffer.from(got), Buffer.from(k));
+  if (k && got && got.length === k.length && timingSafeEqual(Buffer.from(got), Buffer.from(k))) return true;
+  const t = verify((req.headers.get("authorization") || "").replace(/^Bearer /, ""));
+  return !!t && t.u === DUENO;
 }
 const sign = (o: any) => { const b = Buffer.from(JSON.stringify(o)).toString("base64url"); return b + "." + createHmac("sha256", secret()).update(b).digest("base64url"); };
 function verify(t: string) {
@@ -97,13 +101,13 @@ async function route(req: Request, _ctx: Context) {
     const u = { slug: s, alias, bio: txt(b.bio, 300), ciudad: txt(b.ciudad, 60), salt, hash: hash(pw, salt), at: Date.now() };
     const r = await db().setJSON("poeta/" + s, u, { onlyIfNew: true });
     if (!r.modified) return fail("Ese nombre de poeta ya existe. Prueba con otro.", 409);
-    return json({ token: sign({ u: s, at: Date.now() }), poeta: pubPoeta(u) }, 201);
+    return json({ token: sign({ u: s, at: Date.now() }), poeta: pubPoeta(u), dueno: s === DUENO }, 201);
   }
   if (M === "POST" && p[0] === "entrar") {
     const b = await body(), u = await db().get("poeta/" + slug(b.alias), { type: "json" }) as any;
     if (!u || hash(String(b.clave || ""), u.salt) !== u.hash) return fail("Nombre o contraseña incorrectos", 401);
     if (u.bloqueado) return fail("Esta cuenta está suspendida", 403);
-    return json({ token: sign({ u: u.slug, at: Date.now() }), poeta: pubPoeta(u) });
+    return json({ token: sign({ u: u.slug, at: Date.now() }), poeta: pubPoeta(u), dueno: u.slug === DUENO });
   }
 
   /* ===== lectura pública ===== */
@@ -138,7 +142,7 @@ async function route(req: Request, _ctx: Context) {
     if (u.bloqueado) return fail("Esta cuenta está suspendida", 403);
     if (M === "GET" && !p[1]) {
       const L = (await all("poema/")).filter(x => x.autor === u.slug).sort((a, b) => b.at - a.at);
-      return json({ poeta: pubPoeta(u), poemas: L.map(pubPoema), revisar: (await settings()).revisar });
+      return json({ poeta: pubPoeta(u), poemas: L.map(pubPoema), revisar: (await settings()).revisar, dueno: u.slug === DUENO });
     }
     if (M === "PUT" && p[1] === "perfil") {
       const b = await body(); const v = await mutate("poeta/" + u.slug, x => ({ ...x, bio: txt(b.bio, 300), ciudad: txt(b.ciudad, 60) }));
@@ -197,6 +201,7 @@ async function route(req: Request, _ctx: Context) {
       return json({ poetas: (await all("poeta/")).sort((a, b) => b.at - a.at).map(u => ({ ...pubPoeta(u), bloqueado: !!u.bloqueado, pausado: !!u.pausado, poemas: L.filter(x => x.autor === u.slug).length, oros: L.filter(x => x.autor === u.slug).reduce((a, x) => a + (x.oros || 0), 0) })) });
     }
     if (p[1] === "poetas" && p[2] && M === "PATCH") {
+      if (slug(p[2]) === DUENO) return fail("Esa es tu cuenta de dueño");
       const b = await body(), u = await mutate("poeta/" + slug(p[2]), v => ({ ...v, ...(b.bloqueado !== undefined ? { bloqueado: !!b.bloqueado } : {}), ...(b.pausado !== undefined ? { pausado: !!b.pausado } : {}) }));
       return u ? json({ ok: true }) : fail("Ese poeta no existe", 404);
     }

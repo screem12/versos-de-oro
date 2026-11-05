@@ -5,13 +5,16 @@ function toast(m, ms = 2600) { const t = $("#toast"); t.textContent = m; t.hidde
 const TEMAS = { amor: "Amor", desamor: "Desamor", soledad: "Soledad", tristeza: "Tristeza", felicidad: "Felicidad", vida: "Vida", muerte: "Muerte", esperanza: "Esperanza", naturaleza: "Naturaleza", fe: "Fe", tierra: "Mi tierra", personal: "Personales", reflexion: "Reflexiones", libre: "Uso libre" };
 const ET = { publicado: "Publicado", revision: "En revisión", rechazado: "No aprobado", oculto: "Retirado" };
 let KEY = ""; try { KEY = localStorage.getItem("vdo.admin") || ""; } catch { }
+// Si entraste a la app con tu cuenta de dueño (MR.CH), pasas directo sin clave
+let SES = null; try { SES = JSON.parse(localStorage.getItem("vdo.sesion") || "null"); } catch { }
+const DUENO = !!(SES && SES.dueno && SES.token);
 let tab = "rev", R = {}, P = [], U = [], S = {}, q = "";
 const fdate = t => new Date(t).toLocaleString("es-MX", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 async function A(path, method = "GET", body) {
-  const r = await fetch("/api/admin/" + path, { method, headers: { "content-type": "application/json", "x-admin-key": KEY }, body: body ? JSON.stringify(body) : undefined });
+  const r = await fetch("/api/admin/" + path, { method, headers: { "content-type": "application/json", ...(KEY ? { "x-admin-key": KEY } : DUENO ? { authorization: "Bearer " + SES.token } : {}) }, body: body ? JSON.stringify(body) : undefined });
   const d = await r.json().catch(() => ({})); if (!r.ok) { const e = new Error(d.error || "Algo salió mal"); e.status = r.status; throw e; } return d;
 }
-const head = () => `<div class="top"><a class="brand" href="/"><img src="/icons/versos-192.png" alt=""><span><b>Versos de Oro</b><small>Administrador</small></span></a><button class="btn sm" id="bOut">Salir</button></div>`;
+const head = () => `<div class="top"><a class="brand" href="/"><img src="/icons/versos-192.png" alt=""><span><b>Versos de Oro</b><small>Administrador</small></span></a>${DUENO && !KEY ? `<a class="btn sm" href="/#/cuaderno">‹ Volver a la app</a>` : `<button class="btn sm" id="bOut">Salir</button>`}</div>`;
 function login(err = "") {
   $("#app").innerHTML = `<div class="wrap"><div class="prof"><div class="av">✦</div><h1>Administrar Versos de Oro</h1></div><form class="form" id="lf" novalidate><label>Clave de administrador<input id="k" type="password" autocomplete="current-password"></label><p class="err">${esc(err)}</p><button class="btn gold-b wide" type="submit">Entrar</button></form></div>`;
   $("#lf").onsubmit = async e => { e.preventDefault(); KEY = $("#k").value.trim(); try { await A("settings"); try { localStorage.setItem("vdo.admin", KEY); } catch { } load(); } catch (x) { login(x.status === 401 ? "Clave incorrecta" : x.message); } };
@@ -34,7 +37,7 @@ function draw() {
           <div class="acts"><a class="btn sm" href="/#/poeta/${esc(u.slug)}" target="_blank">Ver</a><button class="btn sm" data-pau="${esc(u.slug)}" data-v="${u.pausado ? "" : "1"}">${u.pausado ? "Quitar pausa" : "Pausar"}</button><button class="btn sm" data-blq="${esc(u.slug)}" data-v="${u.bloqueado ? "" : "1"}">${u.bloqueado ? "Reactivar" : "Suspender"}</button></div></div>${u.bloqueado ? `<span class="estado oculto" style="width:max-content">Suspendido: sus poemas no se ven</span>` : ""}${u.pausado ? `<span class="estado revision" style="width:max-content">En pausa: nadie ve sus poemas; él no se entera</span>` : ""}</div>`).join("") : `<p class="empty">Aún no hay poetas registrados.</p>`)
       : `<div class="box"><div class="sw"><div><b>Revisar antes de publicar</b><p class="note">Si está prendido, cada poema nuevo o editado espera tu aprobación. Si lo apagas, se publican al instante (igual puedes retirarlos).</p></div><input type="checkbox" id="cRev" ${S.revisar ? "checked" : ""}></div></div>
          <div class="box"><b>Poema del día</b><p class="note">${R.dia ? `Hoy: «${esc(R.dia.titulo)}» de ${esc(R.dia.alias)}.` : "Todavía no hay poemas publicados."} ${S.diaManual ? "Lo elegiste tú." : "Se elige solo entre los más queridos y cambia cada día."}</p>${S.diaManual ? `<button class="btn sm" id="bDiaAuto">Que se elija solo otra vez</button>` : `<p class="note">Para elegirlo tú, ve a «Poemas» y toca «Poema del día» en el que quieras.</p>`}</div>`}</div></div>`;
-  $("#bOut").onclick = () => { try { localStorage.removeItem("vdo.admin"); } catch { } KEY = ""; login(); };
+  if ($("#bOut")) $("#bOut").onclick = () => { try { localStorage.removeItem("vdo.admin"); } catch { } KEY = ""; login(); };
   document.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { tab = b.dataset.tab; draw(); });
   const qi = $("#q"); if (qi) qi.oninput = () => { q = qi.value; const pos = qi.selectionStart; draw(); const n2 = $("#q"); n2.focus(); n2.setSelectionRange(pos, pos); };
   document.querySelectorAll("[data-st]").forEach(b => b.onclick = async () => {
@@ -59,4 +62,4 @@ function item(p, rev) {
     <div class="acts">${p.estado !== "publicado" ? `<button class="btn sm gold-b" data-st="publicado" data-id="${p.id}">✓ Publicar</button>` : `<a class="btn sm" href="/#/poema/${p.id}" target="_blank">Ver</a><button class="btn sm" data-dia="${p.id}">Poema del día</button><button class="btn sm" data-st="oculto" data-id="${p.id}">Retirar</button>`}
       ${p.estado === "revision" ? (p.casa ? `<button class="btn sm" data-del="${p.id}">✕ Denegar</button>` : `<button class="btn sm" data-st="rechazado" data-id="${p.id}">✕ Denegar</button>`) : ""}${p.casa && p.estado === "revision" ? "" : `<button class="btn sm" data-del="${p.id}">Borrar</button>`}</div></div>`;
 }
-KEY ? load() : login();
+KEY || DUENO ? load() : login();

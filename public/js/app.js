@@ -35,7 +35,7 @@ async function load() {
 }
 
 /* ================= piezas ================= */
-const topbar = () => `<div class="top"><a class="brand" href="#/"><img src="/icons/versos-192.png" alt=""><span><b>Versos de Oro</b><small>La casa de los poetas</small></span></a>${st.sesion ? `<a class="btn sm ghost" href="#/cuaderno">${esc(st.sesion.poeta.alias)}</a>` : `<a class="btn sm ghost" href="#/cuaderno">Entrar</a>`}</div>`;
+const topbar = () => `<div class="top"><a class="brand" href="#/"><img src="/icons/versos-192.png" alt=""><span><b>Versos de Oro</b><small>La casa de los poetas</small></span></a>${st.sesion ? `<span class="acts" style="flex-wrap:nowrap">${st.sesion.dueno ? `<a class="btn sm gold-b" href="/admin.html" aria-label="Modo administrador">⚙</a>` : ""}<a class="btn sm ghost" href="#/cuaderno">${esc(st.sesion.poeta.alias)}</a></span>` : `<a class="btn sm ghost" href="#/cuaderno">Entrar</a>`}</div>`;
 const card = p => `<a class="pc" href="#/poema/${p.id}"><h3>${esc(p.titulo)}</h3><div class="v">${esc(p.texto)}</div>
   <div class="ft"><span>de <b>${esc(p.alias)}</b> · ${hace(p.pubAt)}</span><span class="oro">${ico("oro", 1)}${p.oros}</span></div></a>`;
 function tabbar(cur) {
@@ -191,6 +191,7 @@ async function cuaderno() {
   if (!st.sesion) { app.innerHTML = acceso("entrar"); afterAcceso("entrar"); return; }
   app.innerHTML = `<div class="wrap">${topbar()}<p class="empty"><span class="spin"></span></p></div>`;
   let d; try { d = await api("yo", "GET", null, true); } catch (e) { if (e.status === 401 || e.status === 403) { app.innerHTML = acceso("entrar", e.message); afterAcceso("entrar"); } else app.innerHTML = `<div class="wrap">${topbar()}<p class="empty">${esc(e.message)}</p></div>`; return; }
+  if (st.sesion.dueno !== !!d.dueno) { st.sesion.dueno = !!d.dueno; LS.set("sesion", st.sesion); }
   const u = d.poeta, P = d.poemas, pub = P.filter(p => p.estado === "publicado"), oros = pub.reduce((a, p) => a + p.oros, 0);
   const borr = LS.get("borrador", null);
   const ET = { publicado: "Publicado", revision: "En revisión", rechazado: "No aprobado", oculto: "Retirado" };
@@ -198,6 +199,7 @@ async function cuaderno() {
     <div class="prof"><div class="av">${esc(u.alias[0] || "V").toUpperCase()}</div><h1>${esc(u.alias)}</h1>${u.ciudad ? `<p>${esc(u.ciudad)}</p>` : ""}
       <div class="stats"><div><b>${pub.length}</b><small>Publicados</small></div><div><b>${oros}</b><small>Oros</small></div><div><b>${P.length - pub.length}</b><small>Otros</small></div></div>
       <div class="acts" style="justify-content:center;margin-top:8px"><a class="btn sm" href="#/poeta/${u.slug}">Ver mi perfil público</a><button class="btn sm" id="bPf">Editar perfil</button><button class="btn sm" id="bOut">Salir</button></div></div>
+    ${d.dueno ? `<a class="box adminsw" href="/admin.html"><span class="ic">⚙</span><span><b>Modo administrador</b><br><small>Solo tú lo ves. Revisa, publica o deniega poemas, pausa poetas y elige el poema del día.</small></span><span class="go">Entrar ›</span></a>` : ""}
     <form class="form box" id="pf" hidden><label>¿De dónde escribes?<input id="p_ci" maxlength="60" value="${esc(u.ciudad)}"></label><label>Unas palabras sobre ti<textarea id="p_b" rows="3" maxlength="300">${esc(u.bio)}</textarea></label><button class="btn gold-b" type="submit">Guardar</button></form>
     ${borr && (borr.texto || borr.titulo) ? `<div class="box"><b>Tienes un borrador sin publicar</b><p class="note">${esc(borr.titulo || "Sin título")}</p><a class="btn sm gold-b" href="#/escribir">Seguir escribiendo</a></div>` : ""}
     ${d.revisar ? `<p class="note" style="text-align:center;margin-top:14px">Cada poema nuevo pasa por una revisión antes de publicarse, para cuidar la calidad de la casa.</p>` : ""}

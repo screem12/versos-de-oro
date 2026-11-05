@@ -138,3 +138,7 @@ a{color:inherit}
 @media(min-width:700px){.row .pc{flex-basis:46%}}
 
 .pc .ft{justify-content:center;gap:14px}.dia .q{display:none}
+
+a.adminsw{display:flex;align-items:center;gap:12px;text-decoration:none;border-color:var(--gold3);background:linear-gradient(135deg,#221b0e,#14120e)}
+a.adminsw .ic{flex:none;width:44px;height:44px;border-radius:50%;display:grid;place-items:center;background:var(--goldg);color:#1a1408;font-size:22px}
+a.adminsw small{color:var(--muted)}a.adminsw .go{margin-left:auto;flex:none;color:var(--gold);font-weight:800}
