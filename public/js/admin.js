@@ -8,7 +8,7 @@ let KEY = ""; try { KEY = localStorage.getItem("vdo.admin") || ""; } catch { }
 // Si entraste a la app con tu cuenta de dueño (MR.CH), pasas directo sin clave
 let SES = null; try { SES = JSON.parse(localStorage.getItem("vdo.sesion") || "null"); } catch { }
 const DUENO = !!(SES && SES.dueno && SES.token);
-let tab = "rev", R = {}, P = [], U = [], S = {}, q = "";
+let tab = "rev", R = {}, P = [], U = [], S = {}, q = "", RP = [];
 const fdate = t => new Date(t).toLocaleString("es-MX", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 async function A(path, method = "GET", body) {
   const r = await fetch("/api/admin/" + path, { method, headers: { "content-type": "application/json", ...(KEY ? { "x-admin-key": KEY } : DUENO ? { authorization: "Bearer " + SES.token } : {}) }, body: body ? JSON.stringify(body) : undefined });
@@ -20,7 +20,7 @@ function login(err = "") {
   $("#lf").onsubmit = async e => { e.preventDefault(); KEY = $("#k").value.trim(); try { await A("settings"); try { localStorage.setItem("vdo.admin", KEY); } catch { } load(); } catch (x) { login(x.status === 401 ? "Clave incorrecta" : x.message); } };
 }
 async function load() {
-  try { [R, { poemas: P }, { poetas: U }, S] = await Promise.all([A("resumen"), A("poemas"), A("poetas"), A("settings")]); }
+  try { [R, { poemas: P }, { poetas: U }, S] = await Promise.all([A("resumen"), A("poemas"), A("poetas"), A("settings")]); RP = (await A("reportes")).reportes || []; }
   catch (e) { if (e.status === 401) return login("Clave incorrecta"); return toast(e.message); }
   draw();
 }
@@ -31,7 +31,7 @@ function draw() {
   $("#app").innerHTML = `<div class="wrap">${head()}
     <div class="kp"><div><b>${R.pendientes}</b><small>Por revisar</small></div><div><b>${R.publicados}</b><small>Publicados</small></div><div><b>${R.poetas}</b><small>Poetas</small></div><div><b>${R.oros}</b><small>Oros</small></div></div>
     <div class="tabs2"><button data-tab="rev" aria-pressed="${tab === "rev"}">Revisar${rev.length ? ` (${rev.length})` : ""}</button><button data-tab="all" aria-pressed="${tab === "all"}">Poemas</button><button data-tab="poe" aria-pressed="${tab === "poe"}">Poetas</button><button data-tab="cfg" aria-pressed="${tab === "cfg"}">Ajustes</button></div>
-    <div id="body">${tab === "rev" ? (rev.length ? (rev.length > 1 ? `<div class="acts" style="justify-content:flex-end;margin-top:6px"><button class="btn sm gold-b" id="bAll">✓ Publicar los ${rev.length}</button></div>` : "") + rev.map(p => item(p, true)).join("") : `<p class="empty">No hay poemas esperando revisión. ✦</p>`)
+    <div id="body">${tab === "rev" && RP.length ? `<div class="box" style="border-color:#ff8f7a66"><b style="color:#ffb59f">⚠️ Reportes de plagio (${RP.length})</b>${RP.map(r => `<div class="adm"><small class="note" style="margin:0">${fdate(r.at)}${r.poeta ? " · lo mandó " + esc(r.poeta) : ""}${r.contacto ? " · " + esc(r.contacto) : ""}</small><b>${esc(r.titulo || "Sin título")}</b>${r.link ? `<a href="${esc(/^https?:\/\//.test(r.link) ? r.link : "#")}" target="_blank" rel="noopener" style="color:var(--gold2);word-break:break-all">${esc(r.link)}</a>` : ""}${r.detalle ? `<p class="note" style="white-space:pre-wrap">${esc(r.detalle)}</p>` : ""}<div class="acts">${r.poema ? `<a class="btn sm" href="/#/poema/${esc(r.poema)}" target="_blank">Ver poema</a>` : ""}<button class="btn sm" data-rep="${esc(r.id)}">Ya lo atendí</button></div></div>`).join("")}</div>` : ""}${tab === "rev" ? (rev.length ? (rev.length > 1 ? `<div class="acts" style="justify-content:flex-end;margin-top:6px"><button class="btn sm gold-b" id="bAll">✓ Publicar los ${rev.length}</button></div>` : "") + rev.map(p => item(p, true)).join("") : `<p class="empty">No hay poemas esperando revisión. ✦</p>`)
       : tab === "all" ? `<label class="search"><input id="q" placeholder="Buscar poema o poeta" value="${esc(q)}"></label>${todos.map(p => item(p)).join("") || `<p class="empty">Aún no hay poemas.</p>`}`
       : tab === "poe" ? (U.length ? U.map(u => `<div class="adm"><div class="sw"><div><h3>${esc(u.alias)}</h3><small class="note">${esc(u.ciudad || "")} · ${u.poemas} poemas · ${u.oros} oros · desde ${new Date(u.at).toLocaleDateString("es-MX")}</small>${u.bio ? `<p class="note">${esc(u.bio)}</p>` : ""}</div>
           <div class="acts"><a class="btn sm" href="/#/poeta/${esc(u.slug)}" target="_blank">Ver</a><button class="btn sm" data-clv="${esc(u.slug)}" data-al="${esc(u.alias)}">Dar contraseña de acceso</button><button class="btn sm" data-pau="${esc(u.slug)}" data-v="${u.pausado ? "" : "1"}">${u.pausado ? "Quitar pausa" : "Pausar"}</button><button class="btn sm" data-blq="${esc(u.slug)}" data-v="${u.bloqueado ? "" : "1"}">${u.bloqueado ? "Reactivar" : "Suspender"}</button></div></div>${u.bloqueado ? `<span class="estado oculto" style="width:max-content">Suspendido: sus poemas no se ven</span>` : ""}${u.pausado ? `<span class="estado revision" style="width:max-content">En pausa: nadie ve sus poemas; él no se entera</span>` : ""}${u.temporal ? `<span class="estado revision" style="width:max-content">Tiene contraseña de acceso: aún no pone la suya</span>` : ""}</div>`).join("") : `<p class="empty">Aún no hay poetas registrados.</p>`)
@@ -47,6 +47,7 @@ function draw() {
     try { await A("poemas/" + id, "PATCH", { estado, nota: estado === "publicado" ? "" : nota }); toast(estado === "publicado" ? "Publicado ✦" : estado === "rechazado" ? "Denegado" : estado === "oculto" ? "Retirado" : "Listo"); load(); } catch (e) { toast(e.message); }
   });
   document.querySelectorAll("[data-del]").forEach(b => b.onclick = async () => { if (b.dataset.k !== "1") { b.dataset.k = "1"; b.textContent = b.textContent.includes("Denegar") ? "¿Seguro? Toca otra vez" : "¿Borrar para siempre?"; return; } try { await A("poemas/" + b.dataset.del, "DELETE"); toast(b.textContent.includes("Seguro") ? "Denegado" : "Borrado"); load(); } catch (e) { toast(e.message); } });
+  document.querySelectorAll("[data-rep]").forEach(b => b.onclick = async () => { try { await A("reportes/" + b.dataset.rep, "DELETE"); toast("Reporte cerrado"); load(); } catch (e) { toast(e.message); } });
   document.querySelectorAll("[data-dia]").forEach(b => b.onclick = async () => { try { S = await A("settings", "PUT", { diaManual: b.dataset.dia }); toast("Ahora es el poema del día"); load(); } catch (e) { toast(e.message); } });
   document.querySelectorAll("[data-clv]").forEach(b => b.onclick = () => {
     const box = b.closest(".adm"); if (box.querySelector(".clv")) return;
@@ -87,7 +88,8 @@ function draw() {
 function item(p, rev) {
   return `<div class="adm"><div class="sw"><h3>${esc(p.titulo)}</h3><span class="estado ${p.estado}">${ET[p.estado]}</span></div>
     <small class="note" style="margin:0">de <b style="color:var(--gold2)">${esc(p.alias)}</b> · ${TEMAS[p.tema] || ""} · ${fdate(p.at)}${p.estado === "publicado" ? ` · ✦ ${p.oros} oros` : ""}</small>
-    <div class="v">${esc(p.texto)}</div>
+    ${p.parecido ? `<div class="box" style="border-color:#ff8f7a88;margin:4px 0;padding:10px 12px"><b style="color:#ffb59f">⚠️ Posible plagio: se parece ${p.parecido.pct}% a «${esc(p.parecido.titulo)}» de ${esc(p.parecido.alias)}</b><br><a class="note" href="/#/poema/${esc(p.parecido.id)}" target="_blank" style="color:var(--gold2)">Comparar con el original</a></div>` : ""}
+    <div class="v">${esc(p.texto)}</div>${p.cert ? `<small class="note" style="margin:0">Certificado: <b style="color:var(--gold2)">${esc(p.cert)}</b></small>` : ""}
     ${p.casa ? `<span class="estado publicado" style="width:max-content">✦ Poema diario para MR.CH</span>` : ""}${!p.casa && (rev || p.estado !== "publicado") ? `<input id="n_${p.id}" placeholder="Nota para el poeta si no lo apruebas (opcional)" value="${esc(p.nota)}">` : ""}
     <div class="acts">${p.estado !== "publicado" ? `<button class="btn sm gold-b" data-st="publicado" data-id="${p.id}">✓ Publicar</button>` : `<a class="btn sm" href="/#/poema/${p.id}" target="_blank">Ver</a><button class="btn sm" data-dia="${p.id}">Poema del día</button><button class="btn sm" data-st="oculto" data-id="${p.id}">Retirar</button>`}
       ${p.estado === "revision" ? (p.casa ? `<button class="btn sm" data-del="${p.id}">✕ Denegar</button>` : `<button class="btn sm" data-st="rechazado" data-id="${p.id}">✕ Denegar</button>`) : ""}${p.casa && p.estado === "revision" ? "" : `<button class="btn sm" data-del="${p.id}">Borrar</button>`}</div></div>`;

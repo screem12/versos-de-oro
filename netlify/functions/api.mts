@@ -81,6 +81,32 @@ async function anunciarPoema(x: any) {
     avisar(s => s.poeta === x.autor, { title: "Tu poema ya está publicado ✦", body: `«${x.titulo}» ya lo puede leer todo el mundo`, url: "/#/poema/" + x.id, tag: "mio-" + x.id })
   ]);
 }
+/* ===== Antiplagio ===== */
+// 1) Certificado de autoría: un código único que sale del texto exacto, el autor y la fecha en que se publicó por primera vez
+const C32 = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+async function certificar(x: any) {
+  if (!x || x.cert || x.estado !== "publicado") return x;
+  const pubAt = x.pubAt || Date.now(), h = createHash("sha256").update([x.autor, x.titulo, x.texto, pubAt].join("\u241E")).digest();
+  let code = "VDO-"; for (let i = 0; i < 8; i++) { code += C32[h[i] % C32.length]; if (i === 3) code += "-"; }
+  const cert = { code, hash: h.toString("hex"), id: x.id, titulo: x.titulo, texto: x.texto, autor: x.autor, alias: x.alias, pubAt };
+  await db().setJSON("cert/" + code, cert, { onlyIfNew: true });
+  return (await mutate("poema/" + x.id, v => v.cert ? null : { ...v, cert: code, pubAt })) || { ...x, cert: code };
+}
+// 2) Detector de parecido: compara grupos de 3 palabras seguidas contra los poemas de otros poetas
+const palabras = (t: string) => String(t || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9ñ\s]/g, " ").split(/\s+/).filter(Boolean);
+const tripletas = (t: string) => { const w = palabras(t), S = new Set<string>(); for (let i = 0; i + 2 < w.length; i++) S.add(w[i] + " " + w[i + 1] + " " + w[i + 2]); return S; };
+async function parecido(texto: string, autor: string, id = "") {
+  const A = tripletas(texto); if (A.size < 4) return null;
+  let mejor: any = null;
+  for (const y of await all("poema/")) {
+    if (y.autor === autor || y.id === id || !["publicado", "revision"].includes(y.estado)) continue;
+    const B = tripletas(y.texto); if (!B.size) continue;
+    let c = 0; for (const t of A) if (B.has(t)) c++;
+    const pct = Math.round(100 * c / Math.min(A.size, B.size));
+    if (pct >= 30 && (!mejor || pct > mejor.pct)) mejor = { id: y.id, titulo: y.titulo, alias: y.alias, pct, cert: y.cert || "" };
+  }
+  return mejor;
+}
 const DEF = { revisar: true, diaManual: "" };
 async function settings() { return { ...DEF, ...(((await db().get("config/settings", { type: "json" })) as any) || {}) }; }
 async function mutate(key: string, fn: (v: any) => any) {
@@ -97,7 +123,7 @@ async function all(prefix: string) {
   return (await Promise.all(blobs.map(x => s.get(x.key, { type: "json" })))).filter(Boolean) as any[];
 }
 const pubPoeta = (p: any) => ({ slug: p.slug, alias: p.alias, bio: p.bio || "", ciudad: p.ciudad || "", at: p.at });
-const pubPoema = (x: any) => ({ id: x.id, titulo: x.titulo, texto: x.texto, tema: x.tema, autor: x.autor, alias: x.alias, at: x.at, pubAt: x.pubAt || x.at, oros: x.oros || 0, estado: x.estado, nota: x.nota || "", casa: !!x.casa });
+const pubPoema = (x: any) => ({ id: x.id, titulo: x.titulo, texto: x.texto, tema: x.tema, autor: x.autor, alias: x.alias, at: x.at, pubAt: x.pubAt || x.at, oros: x.oros || 0, estado: x.estado, nota: x.nota || "", casa: !!x.casa, cert: x.cert || "", parecido: x.parecido || null });
 // Poema del día: el que elijas tú, o uno de los más queridos que va cambiando cada día
 function poemaDelDia(L: any[], manual: string) {
   const m = manual && L.find(x => x.id === manual); if (m) return m;
@@ -148,8 +174,25 @@ async function route(req: Request, ctx: Context) {
   }
 
   /* ===== lectura pública ===== */
+  // verificar un certificado de autoría
+  if (M === "GET" && p[0] === "certificado" && p[1]) {
+    const code = "VDO-" + String(p[1]).toUpperCase().replace(/^VDO/, "").replace(/[^A-Z0-9]/g, "").replace(/^(.{4})(.{4}).*$/, "$1-$2");
+    const c = await db().get("cert/" + code, { type: "json" }) as any; if (!c) return fail("No existe ningún poema con ese código", 404);
+    return json({ cert: { code: c.code, titulo: c.titulo, texto: c.texto, alias: c.alias, autor: c.autor, pubAt: c.pubAt, hash: c.hash, id: c.id } });
+  }
+  // reportar un plagio (llega a tu administrador)
+  if (M === "POST" && p[0] === "reportes") {
+    const b = await body(); if (b.web) return json({ ok: true });
+    const r = { id: Date.now().toString(36) + randomBytes(3).toString("hex"), poema: txt(b.poema, 40), titulo: txt(b.titulo, 140), link: txt(b.link, 500), detalle: txt(b.detalle, 2000), contacto: txt(b.contacto, 100), poeta: me()?.u || "", at: Date.now() };
+    if (!r.detalle && !r.link) return fail("Cuéntanos dónde viste el plagio o pega el link");
+    if ((await db().list({ prefix: "rep/" })).blobs.length >= 300) return fail("Hay muchos reportes pendientes. Intenta más tarde.", 429);
+    await db().setJSON("rep/" + r.id, r);
+    luego(avisar(x => x.admin, { title: "⚠️ Reporte de plagio", body: r.titulo ? `Sobre «${r.titulo}»` : "Alguien reportó un posible plagio", url: "/admin.html", tag: "rep-" + r.id }));
+    return json({ ok: true }, 201);
+  }
   if (M === "GET" && p[0] === "poemas" && !p[1]) {
-    const s = await settings(), L = (await all("poema/")).filter(x => x.estado === "publicado");
+    const s = await settings(), L0 = (await all("poema/")).filter(x => x.estado === "publicado");
+    const L = await Promise.all(L0.map(x => x.cert ? x : certificar(x))); // a los poemas viejos les damos su certificado
     // Poetas en pausa: sus poemas no los ve nadie más, pero ellos los siguen viendo como siempre (no se enteran)
     const yo = me()?.u, bloq = new Set((await all("poeta/")).filter(u => u.bloqueado || (u.pausado && u.slug !== yo)).map(u => u.slug));
     const V = L.filter(x => !bloq.has(x.autor)).sort((a, b) => (b.pubAt || b.at) - (a.pubAt || a.at));
@@ -205,16 +248,16 @@ async function route(req: Request, ctx: Context) {
         const mine = (await all("poema/")).filter(x => x.autor === u.slug && x.at > Date.now() - 864e5).length;
         if (mine >= 15) return fail("Llegaste al límite de 15 poemas por día. Sigue mañana.", 429);
         const id = Date.now().toString(36) + randomBytes(3).toString("hex");
-        const x = { id, titulo, texto, tema, autor: u.slug, alias: u.alias, at: Date.now(), pubAt: estado === "publicado" ? Date.now() : 0, oros: 0, estado };
-        await db().setJSON("poema/" + id, x); if (estado === "publicado") luego(anunciarPoema(x));
+        let x: any = { id, titulo, texto, tema, autor: u.slug, alias: u.alias, at: Date.now(), pubAt: estado === "publicado" ? Date.now() : 0, oros: 0, estado, parecido: await parecido(texto, u.slug) };
+        await db().setJSON("poema/" + id, x); if (estado === "publicado") { x = await certificar(x); luego(anunciarPoema(x)); }
         return json({ poema: pubPoema(x) }, 201);
       }
       const id = String(p[2]).replace(/[^a-z0-9]/g, "");
-      let no = "", antes = "";
-      const x = await mutate("poema/" + id, v => { antes = v.estado; if (v.autor !== u.slug) { no = "Ese poema no es tuyo"; return null; } return { ...v, titulo, texto, tema, estado, nota: "", pubAt: estado === "publicado" ? (v.pubAt || Date.now()) : v.pubAt, editado: Date.now() }; });
+      let no = "", antes = ""; const par = await parecido(texto, u.slug, String(p[2]));
+      const x = await mutate("poema/" + id, v => { antes = v.estado; if (v.autor !== u.slug) { no = "Ese poema no es tuyo"; return null; } return { ...v, titulo, texto, tema, estado, nota: "", parecido: par, pubAt: estado === "publicado" ? (v.pubAt || Date.now()) : v.pubAt, editado: Date.now() }; });
       if (!x) return fail("Ese poema no existe", 404); if (no) return fail(no, 403);
-      if (x.estado === "publicado" && antes !== "publicado") luego(anunciarPoema(x));
-      return json({ poema: pubPoema(x) });
+      let y = x; if (y.estado === "publicado" && antes !== "publicado") { y = await certificar(y); luego(anunciarPoema(y)); }
+      return json({ poema: pubPoema(y) });
     }
     if (M === "DELETE" && p[1] === "poemas" && p[2]) {
       const id = String(p[2]).replace(/[^a-z0-9]/g, ""), x = await db().get("poema/" + id, { type: "json" }) as any;
@@ -231,10 +274,13 @@ async function route(req: Request, ctx: Context) {
       const L = await all("poema/"), U = await all("poeta/"), s = await settings();
       const pub = L.filter(x => x.estado === "publicado"), dia = poemaDelDia(pub, s.diaManual);
       const avisosN = (await db().list({ prefix: "sub/" })).blobs.length;
-      return json({ avisos: avisosN, pendientes: L.filter(x => x.estado === "revision").length, publicados: pub.length, poetas: U.length, oros: pub.reduce((a, x) => a + (x.oros || 0), 0), revisar: s.revisar,
+      const repN = (await db().list({ prefix: "rep/" })).blobs.length;
+      return json({ reportes: repN, avisos: avisosN, pendientes: L.filter(x => x.estado === "revision").length, publicados: pub.length, poetas: U.length, oros: pub.reduce((a, x) => a + (x.oros || 0), 0), revisar: s.revisar,
         dia: dia ? { id: dia.id, titulo: dia.titulo, alias: dia.alias } : null,
         ultimos: L.sort((a, b) => b.at - a.at).slice(0, 8).map(x => ({ id: x.id, titulo: x.titulo, alias: x.alias, estado: x.estado, at: x.at })) });
     }
+    if (p[1] === "reportes" && M === "GET") return json({ reportes: (await all("rep/")).sort((a, b) => b.at - a.at) });
+    if (p[1] === "reportes" && p[2] && M === "DELETE") { await db().delete("rep/" + String(p[2]).replace(/[^a-z0-9]/g, "")); return json({ ok: true }); }
     if (p[1] === "poemas" && M === "GET") return json({ poemas: (await all("poema/")).sort((a, b) => b.at - a.at).map(pubPoema) });
     if (p[1] === "poemas" && p[2] && M === "PATCH") {
       const b = await body(), id = String(p[2]).replace(/[^a-z0-9]/g, "");
@@ -245,8 +291,10 @@ async function route(req: Request, ctx: Context) {
         if (b.nota !== undefined) n.nota = txt(b.nota, 300);
         return n;
       });
-      if (x && x.estado === "publicado" && antes !== "publicado") luego(anunciarPoema(x));
-      return x ? json({ poema: pubPoema(x) }) : fail("Ese poema no existe", 404);
+      if (!x) return fail("Ese poema no existe", 404);
+      let y = x; if (y.estado === "publicado") y = await certificar(y);
+      if (y.estado === "publicado" && antes !== "publicado") luego(anunciarPoema(y));
+      return json({ poema: pubPoema(y) });
     }
     if (p[1] === "poemas" && p[2] && M === "DELETE") { await db().delete("poema/" + String(p[2]).replace(/[^a-z0-9]/g, "")); return json({ ok: true }); }
     if (p[1] === "poetas" && M === "GET") {

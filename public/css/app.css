@@ -145,3 +145,14 @@ a.adminsw small{color:var(--muted)}a.adminsw .go{margin-left:auto;flex:none;colo
 
 .avisos{display:flex;align-items:center;gap:12px;border-color:var(--gold3)}
 .avisos .ic{flex:none;font-size:26px}
+
+/* antiplagio */
+a.cert{display:block;text-align:center;text-decoration:none;font-size:12.5px;line-height:1.6;color:var(--muted);border:1px solid var(--line);border-radius:14px;padding:10px 14px;margin:6px auto 0;max-width:420px}
+a.cert b{color:var(--gold2)}a.cert .code{font-family:ui-monospace,monospace;letter-spacing:1px;color:var(--gold)}
+a.rep{font-size:12.5px;color:var(--dim)}
+.certbox{position:relative;text-align:center;margin-top:16px;padding:26px 18px 18px;border-radius:20px;background:linear-gradient(180deg,#191510,#0f0d0a);border:1px solid var(--gold3)}
+.certbox .seal{width:56px;height:56px;margin:0 auto 8px;border-radius:50%;display:grid;place-items:center;background:var(--goldg);color:#1a1408;font-size:26px}
+.certbox .lbl{font:700 11px var(--sans);letter-spacing:2.4px;text-transform:uppercase;color:var(--gold)}
+.certbox h3{font:700 28px/1.1 var(--serif);margin:6px 0 10px}.certbox p{color:#d8cfb6}
+.certbox .code{font:700 20px ui-monospace,monospace;letter-spacing:2px;color:var(--gold2)}
+.poem-mini{font:500 17px/1.55 var(--serif);white-space:pre-wrap;color:#e3d9bf;background:#0b0a08;border:1px solid var(--line);border-radius:12px;padding:12px;margin:10px 0;max-height:260px;overflow:auto}

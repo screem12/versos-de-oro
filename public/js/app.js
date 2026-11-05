@@ -95,6 +95,8 @@ function leer(id, p) {
     <div class="au">de <a href="#/poeta/${esc(p.autor)}">${esc(p.alias)}</a> · ${fecha(p.pubAt)}</div>
     <div class="poem" id="poem" style="font-size:${st.size}px">${esc(p.texto)}</div>
     <div class="fin">✦ ✦ ✦</div>
+    ${p.cert ? `<a class="cert" href="#/certificado/${esc(p.cert)}"><b>© ${esc(p.alias)}</b> · Todos los derechos reservados<br>Registrado en Versos de Oro el ${fecha(p.pubAt)}<br><span class="code">${esc(p.cert)}</span> · <u>Verificar</u></a>` : ""}
+    <p style="text-align:center;margin:14px 0 0"><a class="rep" href="#/reportar?poema=${esc(p.id)}">⚠️ ¿Viste este poema copiado en otro lado? Repórtalo</a></p>
     <div class="tsize"><button class="btn sm" data-sz="-2" aria-label="Letra más chica">A−</button><button class="btn sm" data-sz="2" aria-label="Letra más grande">A+</button></div>
     <div class="bar"><button class="btn oro-b" id="bOro" aria-pressed="${dado}">${ico("oro", 1)}<span>${p.oros}</span></button><button class="btn" id="bImg">${ico("img")}Imagen</button><button class="btn" id="bSh">${ico("share")}Compartir</button></div>
   </div>`;
@@ -132,8 +134,9 @@ async function tarjeta(p) {
   let cut = false; if (lines.length * lh > room) { lines = lines.slice(0, Math.floor(room / lh) - 1); cut = true; }
   x.fillStyle = "#efe6cf"; x.font = `500 ${fs}px 'Cormorant Garamond'`; y += (room - lines.length * lh) / 2 * .8;
   lines.forEach(l => { x.fillText(l, W / 2, y); y += lh; }); if (cut) { x.fillStyle = "#a69d86"; x.fillText("…", W / 2, y); }
-  x.fillStyle = g; x.font = "italic 500 40px 'Cormorant Garamond'"; x.fillText("— " + p.alias, W / 2, H - 150);
-  x.fillStyle = "#6f6852"; x.font = "600 22px Manrope"; x.fillText(location.host, W / 2, H - 98);
+  x.fillStyle = g; x.font = "italic 500 40px 'Cormorant Garamond'"; x.fillText("— " + p.alias, W / 2, H - 162);
+  x.fillStyle = "#8a8167"; x.font = "600 20px Manrope"; x.fillText(`© ${p.alias}${p.cert ? " · " + p.cert : ""}`, W / 2, H - 112);
+  x.fillStyle = "#6f6852"; x.font = "600 19px Manrope"; x.fillText(location.host + (p.cert ? " · verifica el código en la app" : ""), W / 2, H - 84);
   const blob = await new Promise(r => c.toBlob(r, "image/png")), file = new File([blob], `${p.titulo.replace(/[^\w\sáéíóúñ-]/gi, "").slice(0, 40) || "poema"} - Versos de Oro.png`, { type: "image/png" }), url = URL.createObjectURL(blob);
   const sh = document.createElement("div"); sh.className = "sheet";
   sh.innerHTML = `<div><img src="${url}" alt="Tarjeta del poema"><div class="acts" style="justify-content:center">${navigator.canShare?.({ files: [file] }) ? `<button class="btn gold-b" id="sS">${ico("share")}Mandar a WhatsApp o redes</button>` : ""}<a class="btn" href="${url}" download="${esc(file.name)}">${ico("dl")}Guardar imagen</a><button class="btn" id="sX">Cerrar</button></div></div>`;
@@ -306,6 +309,42 @@ function installBox() {
 }
 document.addEventListener("click", async e => { if (e.target.closest("#bInst") && deferred) { deferred.prompt(); await deferred.userChoice; deferred = null; e.target.closest("#bInst").hidden = true; } });
 
+/* ================= antiplagio: certificado y reportes ================= */
+async function certificado(code) {
+  const app = $("#app");
+  app.innerHTML = `<div class="wrap">${topbar()}<h2 class="sec" style="margin-top:12px;justify-content:center">Verificar autoría</h2>
+    <form class="form" id="vf" novalidate><input id="v_c" placeholder="VDO-XXXX-XXXX" value="${esc(code || "")}" style="text-align:center;font:700 22px var(--sans);letter-spacing:2px;text-transform:uppercase"><button class="btn gold-b wide" type="submit">Verificar</button></form><div id="vres"></div></div>`;
+  const run = async c => { const r = $("#vres"); if (!c) return; r.innerHTML = `<p class="empty"><span class="spin"></span></p>`;
+    try { const { cert: k } = await api("certificado/" + encodeURIComponent(c));
+      r.innerHTML = `<div class="certbox"><div class="seal">✦</div><span class="lbl">Certificado de autoría</span><h3>${esc(k.titulo)}</h3>
+        <p>Este poema fue publicado por <b>${esc(k.alias)}</b> en Versos de Oro el <b>${new Date(k.pubAt).toLocaleString("es-MX", { day: "numeric", month: "long", year: "numeric", hour: "numeric", minute: "2-digit" })}</b></p>
+        <p class="code">${esc(k.code)}</p><div class="poem-mini">${esc(k.texto)}</div>
+        <p class="note">Huella digital del texto registrado:<br><span style="word-break:break-all;font-size:11px">${esc(k.hash)}</span></p>
+        <div class="acts" style="justify-content:center"><a class="btn sm" href="#/poeta/${esc(k.autor)}">Ver al poeta</a><a class="btn sm" href="#/poema/${esc(k.id)}">Ver el poema</a></div></div>`;
+    } catch (e) { r.innerHTML = `<p class="empty">${esc(e.message)}</p>`; } };
+  $("#vf").onsubmit = e => { e.preventDefault(); run($("#v_c").value.trim()); };
+  run(code);
+}
+function reportar(params) {
+  const p = byId(params.get("poema") || "");
+  return `<div class="wrap">${topbar()}<h2 class="sec" style="margin-top:12px">Reportar un plagio</h2>
+    <p class="note">Si viste un poema de Versos de Oro copiado en otro lado sin dar crédito, o un poema de aquí que es de otra persona, cuéntanos. Lo revisa el administrador.</p>
+    <form class="form" id="rf" novalidate>
+      <label>¿Qué poema?<input id="r_t" maxlength="140" value="${esc(p ? `«${p.titulo}» de ${p.alias}${p.cert ? " · " + p.cert : ""}` : "")}" placeholder="Título y autor"></label>
+      <label>¿Dónde lo viste? (pega el link)<input id="r_l" maxlength="500" placeholder="https://…"></label>
+      <label>Cuéntanos qué pasó<textarea id="r_d" rows="4" maxlength="2000" placeholder="Ej. lo publicaron en un grupo de Facebook con otro nombre"></textarea></label>
+      <label>Tu WhatsApp o correo (opcional)<input id="r_c" maxlength="100" placeholder="Por si necesitamos preguntarte algo"></label>
+      <input id="r_w" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true">
+      <p class="err" id="r_e"></p><button class="btn gold-b wide" type="submit">Enviar reporte</button>
+    </form></div>`;
+}
+function afterReportar(params) {
+  $("#rf").onsubmit = async e => { e.preventDefault(); const b = e.submitter || $("#rf button"); b.disabled = true; $("#r_e").textContent = "";
+    try { await api("reportes", "POST", { poema: params.get("poema") || "", titulo: $("#r_t").value, link: $("#r_l").value, detalle: $("#r_d").value, contacto: $("#r_c").value, web: $("#r_w").value }, true);
+      $("#app").innerHTML = `<div class="wrap">${topbar()}<div class="box" style="text-align:center;margin-top:30px;padding:26px"><div style="font-size:40px">🛡️</div><h2 style="font-family:var(--serif)">Gracias por avisar</h2><p class="note">El administrador revisará tu reporte.</p><a class="btn gold-b" href="#/">Volver al inicio</a></div></div>`;
+    } catch (x) { $("#r_e").textContent = x.message; b.disabled = false; } };
+}
+
 /* ================= navegación ================= */
 async function route() {
   if (!st.ready) return;
@@ -319,6 +358,8 @@ async function route() {
   }
   document.title = "Versos de Oro";
   if (path.startsWith("/poeta/")) { tabbar(""); poeta(decodeURIComponent(path.slice(7))); }
+  else if (path.startsWith("/certificado")) { tabbar(""); certificado(decodeURIComponent(path.slice(13))); }
+  else if (path === "/reportar") { tabbar(""); app.innerHTML = reportar(params); afterReportar(params); }
   else if (path === "/explorar") { tabbar("#/explorar"); app.innerHTML = explorar(qs ? params : null); bindExplorar(); }
   else if (path === "/escribir") { tabbar("#/escribir"); escribir(params); }
   else if (path === "/oros") { tabbar("#/oros"); app.innerHTML = oros(); }
