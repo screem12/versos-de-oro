@@ -123,7 +123,7 @@ async function all(prefix: string) {
   return (await Promise.all(blobs.map(x => s.get(x.key, { type: "json" })))).filter(Boolean) as any[];
 }
 const pubPoeta = (p: any) => ({ slug: p.slug, alias: p.alias, bio: p.bio || "", ciudad: p.ciudad || "", at: p.at });
-const pubPoema = (x: any) => ({ id: x.id, titulo: x.titulo, texto: x.texto, tema: x.tema, autor: x.autor, alias: x.alias, at: x.at, pubAt: x.pubAt || x.at, oros: x.oros || 0, estado: x.estado, nota: x.nota || "", casa: !!x.casa, cert: x.cert || "", parecido: x.parecido || null });
+const pubPoema = (x: any) => ({ id: x.id, titulo: x.titulo, texto: x.texto, tema: x.tema, autor: x.autor, alias: x.alias, at: x.at, pubAt: x.pubAt || x.at, oros: x.oros || 0, estado: x.estado, antes: x.antes || "", borradoAt: x.borradoAt || 0, borradoPor: x.borradoPor || "", nota: x.nota || "", casa: !!x.casa, cert: x.cert || "", parecido: x.parecido || null });
 // Poema del día: el que elijas tú, o uno de los más queridos que va cambiando cada día
 function poemaDelDia(L: any[], manual: string) {
   const m = manual && L.find(x => x.id === manual); if (m) return m;
@@ -222,7 +222,7 @@ async function route(req: Request, ctx: Context) {
     if ((u.tv || 0) !== (t.v || 0)) return fail("Tu contraseña cambió. Vuelve a entrar.", 401);
     if (u.bloqueado) return fail("Esta cuenta está suspendida", 403);
     if (M === "GET" && !p[1]) {
-      const L = (await all("poema/")).filter(x => x.autor === u.slug).sort((a, b) => b.at - a.at);
+      const L = (await all("poema/")).filter(x => x.autor === u.slug && x.estado !== "papelera").sort((a, b) => b.at - a.at);
       return json({ poeta: pubPoeta(u), poemas: L.map(pubPoema), revisar: (await settings()).revisar, dueno: u.slug === DUENO, temporal: !!u.temporal });
     }
     // cambiar mi contraseña (pide la actual)
@@ -261,8 +261,9 @@ async function route(req: Request, ctx: Context) {
     }
     if (M === "DELETE" && p[1] === "poemas" && p[2]) {
       const id = String(p[2]).replace(/[^a-z0-9]/g, ""), x = await db().get("poema/" + id, { type: "json" }) as any;
-      if (!x || x.autor !== u.slug) return fail("Ese poema no existe", 404);
-      await db().delete("poema/" + id); return json({ ok: true });
+      if (!x || x.autor !== u.slug || x.estado === "papelera") return fail("Ese poema no existe", 404);
+      await mutate("poema/" + id, v => ({ ...v, estado: "papelera", antes: v.estado, borradoAt: Date.now(), borradoPor: "poeta" }));
+      return json({ ok: true });
     }
   }
 
@@ -275,7 +276,8 @@ async function route(req: Request, ctx: Context) {
       const pub = L.filter(x => x.estado === "publicado"), dia = poemaDelDia(pub, s.diaManual);
       const avisosN = (await db().list({ prefix: "sub/" })).blobs.length;
       const repN = (await db().list({ prefix: "rep/" })).blobs.length;
-      return json({ reportes: repN, avisos: avisosN, pendientes: L.filter(x => x.estado === "revision").length, publicados: pub.length, poetas: U.length, oros: pub.reduce((a, x) => a + (x.oros || 0), 0), revisar: s.revisar,
+      const papN = L.filter(x => x.estado === "papelera").length;
+      return json({ papelera: papN, reportes: repN, avisos: avisosN, pendientes: L.filter(x => x.estado === "revision").length, publicados: pub.length, poetas: U.length, oros: pub.reduce((a, x) => a + (x.oros || 0), 0), revisar: s.revisar,
         dia: dia ? { id: dia.id, titulo: dia.titulo, alias: dia.alias } : null,
         ultimos: L.sort((a, b) => b.at - a.at).slice(0, 8).map(x => ({ id: x.id, titulo: x.titulo, alias: x.alias, estado: x.estado, at: x.at })) });
     }
@@ -296,7 +298,17 @@ async function route(req: Request, ctx: Context) {
       if (y.estado === "publicado" && antes !== "publicado") luego(anunciarPoema(y));
       return json({ poema: pubPoema(y) });
     }
-    if (p[1] === "poemas" && p[2] && M === "DELETE") { await db().delete("poema/" + String(p[2]).replace(/[^a-z0-9]/g, "")); return json({ ok: true }); }
+    // Borrar = mandar a la papelera (se puede recuperar). Borrar para siempre solo desde la papelera.
+    if (p[1] === "poemas" && p[2] && M === "DELETE") {
+      const id = String(p[2]).replace(/[^a-z0-9]/g, ""), final = new URL(req.url).searchParams.get("final") === "1";
+      if (final) { await db().delete("poema/" + id); return json({ ok: true }); }
+      const x = await mutate("poema/" + id, v => v.estado === "papelera" ? null : { ...v, estado: "papelera", antes: v.estado, borradoAt: Date.now(), borradoPor: "admin" });
+      return x ? json({ ok: true }) : fail("Ese poema no existe", 404);
+    }
+    if (p[1] === "poemas" && p[2] && p[3] === "recuperar" && M === "POST") {
+      const x = await mutate("poema/" + String(p[2]).replace(/[^a-z0-9]/g, ""), v => v.estado !== "papelera" ? null : { ...v, estado: ["publicado", "revision", "rechazado", "oculto"].includes(v.antes) ? v.antes : "revision", antes: undefined, borradoAt: undefined, borradoPor: undefined });
+      return x ? json({ poema: pubPoema(x) }) : fail("Ese poema no existe", 404);
+    }
     if (p[1] === "poetas" && M === "GET") {
       const L = await all("poema/");
       return json({ poetas: (await all("poeta/")).sort((a, b) => b.at - a.at).map(u => ({ ...pubPoeta(u), bloqueado: !!u.bloqueado, pausado: !!u.pausado, temporal: !!u.temporal, poemas: L.filter(x => x.autor === u.slug).length, oros: L.filter(x => x.autor === u.slug).reduce((a, x) => a + (x.oros || 0), 0) })) });
