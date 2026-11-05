@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Administrar · Versos de Oro</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0b0a08">
+<link rel="icon" href="/icons/versos-192.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,600;0,700;1,500&family=Manrope:wght@400;600;700;800&display=swap">
+<link rel="stylesheet" href="/css/app.css">
+<style>
+.wrap{padding-bottom:40px}
+.adm{display:flex;flex-direction:column;gap:6px;padding:16px 0;border-bottom:1px solid var(--line)}.adm:last-child{border:0}
+.adm h3{font:700 23px/1.15 var(--serif);margin:0}
+.adm .v{font:500 19px/1.55 var(--serif);white-space:pre-wrap;color:#e3d9bf;max-height:320px;overflow:auto;background:#0b0a08;border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:4px 0}
+.adm input{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:9px 12px;font-size:14px;width:100%}
+.kp{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:10px 0}.kp div{background:var(--s1);border:1px solid var(--line);border-radius:14px;padding:10px;text-align:center}
+.kp b{display:block;font:700 26px var(--serif);color:var(--gold2)}.kp small{font-size:9.5px;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
+.tabs2 button{font-size:13px;padding:10px 4px;white-space:nowrap}
+.sw{display:flex;gap:12px;align-items:center;justify-content:space-between}
+.sw input{width:52px;height:30px;accent-color:#d9b45a}
+</style>
+</head>
+<body>
+<main id="app"></main>
+<div class="toast" id="toast" role="status" hidden></div>
+<script src="/js/admin.js"></script>
+</body>
+</html>

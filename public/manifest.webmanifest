@@ -1,0 +1,21 @@
+{
+  "id": "/",
+  "name": "Versos de Oro",
+  "short_name": "Versos de Oro",
+  "description": "La casa de los poetas: escribe, publica y lee poesía.",
+  "lang": "es",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b0a08",
+  "theme_color": "#0b0a08",
+  "icons": [
+    { "src": "/icons/versos-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/versos-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icons/versos-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Escribir un poema", "url": "/#/escribir", "icons": [{ "src": "/icons/versos-192.png", "sizes": "192x192" }] }
+  ]
+}

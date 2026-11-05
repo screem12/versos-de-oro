@@ -1,0 +1,9 @@
+{
+  "name": "versos-de-oro",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@netlify/blobs": "11.1.4",
+    "@netlify/functions": "6.0.2"
+  }
+}

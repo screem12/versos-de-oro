@@ -1,0 +1,136 @@
+/* Versos de Oro · negro y dorado */
+:root{
+  --bg:#0b0a08;--s1:#14120e;--s2:#1c1913;--line:#2e2919;--ink:#f3ecd8;--muted:#a69d86;--dim:#6f6852;
+  --gold:#d9b45a;--gold2:#f3dc95;--gold3:#9c7a2c;--goldg:linear-gradient(135deg,#f6e3a1 0%,#d9b45a 38%,#a8822f 70%,#e8cc7a 100%);
+  --serif:"Cormorant Garamond",Georgia,serif;--sans:Manrope,system-ui,sans-serif;
+  --safe-b:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+[hidden]{display:none!important}
+html{background:var(--bg)}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 var(--sans);min-height:100dvh;
+  background-image:radial-gradient(120% 60% at 50% -10%,#2a2213 0%,transparent 60%);background-attachment:fixed}
+button,input,select,textarea{font:inherit;color:inherit}
+a{color:inherit}
+.wrap{max-width:640px;margin:0 auto;padding:calc(env(safe-area-inset-top,0px) + 14px) 16px calc(96px + var(--safe-b))}
+.splash{min-height:100dvh;display:grid;place-items:center}
+.mono{font:700 64px/1 var(--serif);background:var(--goldg);-webkit-background-clip:text;background-clip:text;color:transparent;animation:glow 1.6s ease-in-out infinite alternate}
+@keyframes glow{from{opacity:.55}to{opacity:1}}
+
+/* encabezado */
+.top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px}
+.brand{display:flex;align-items:center;gap:10px;text-decoration:none}
+.brand img{width:38px;height:38px;border-radius:10px}
+.brand b{display:block;font:700 26px/1 var(--serif);letter-spacing:.3px;background:var(--goldg);-webkit-background-clip:text;background-clip:text;color:transparent}
+.brand small{display:block;font-size:10px;letter-spacing:2.4px;text-transform:uppercase;color:var(--muted);margin-top:3px}
+.gold{background:var(--goldg);-webkit-background-clip:text;background-clip:text;color:transparent}
+.orn{display:flex;align-items:center;gap:12px;color:var(--gold3);margin:26px 0 12px}
+.orn::before,.orn::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,transparent,var(--gold3),transparent)}
+.orn span{font:600 13px var(--sans);letter-spacing:2.6px;text-transform:uppercase;color:var(--gold)}
+.sec{display:flex;align-items:baseline;justify-content:space-between;font:700 24px/1.2 var(--serif);margin:26px 0 10px;color:var(--ink)}
+.sec a{font:700 13px var(--sans);color:var(--gold);text-decoration:none}
+
+/* botones */
+.btn{display:inline-flex;align-items:center;gap:8px;padding:11px 16px;border-radius:999px;border:1px solid var(--line);background:var(--s1);font-weight:700;font-size:14px;text-decoration:none;cursor:pointer;white-space:nowrap}
+.btn svg{width:18px;height:18px}
+.btn.gold-b{background:var(--goldg);border:0;color:#1a1408;box-shadow:0 6px 24px #d9b45a33}
+.btn.ghost{background:transparent;border-color:var(--gold3);color:var(--gold2)}
+.btn.sm{padding:7px 12px;font-size:13px}
+.btn.wide{width:100%;justify-content:center;padding:14px}
+.btn[disabled]{opacity:.5}
+.btn[aria-pressed=true]{border-color:var(--gold);color:var(--gold2)}
+.acts{display:flex;gap:8px;flex-wrap:wrap}
+
+/* poema del día */
+.dia{position:relative;display:block;text-decoration:none;margin-top:14px;padding:26px 22px 22px;border-radius:22px;background:linear-gradient(180deg,#191510,#0f0d0a);overflow:hidden}
+.dia::before{content:"";position:absolute;inset:0;border-radius:22px;padding:1px;background:var(--goldg);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none}
+.dia .lbl{font:700 11px var(--sans);letter-spacing:2.6px;text-transform:uppercase;color:var(--gold)}
+.dia h1{font:700 34px/1.08 var(--serif);margin:8px 0 12px}
+.dia .v{font:500 italic 20px/1.5 var(--serif);color:#e9dfc4;white-space:pre-line;display:-webkit-box;-webkit-line-clamp:6;-webkit-box-orient:vertical;overflow:hidden}
+.dia .by{margin-top:14px;font-size:14px;color:var(--muted)}.dia .by b{color:var(--gold2)}
+.dia .q{position:absolute;right:14px;top:-18px;font:700 150px/1 var(--serif);color:#d9b45a14;pointer-events:none}
+
+/* tarjetas de poema */
+.list{display:flex;flex-direction:column;gap:12px}
+.pc{display:block;text-decoration:none;background:var(--s1);border:1px solid var(--line);border-radius:18px;padding:16px 18px;transition:border-color .2s}
+.pc:active{border-color:var(--gold3)}
+.pc h3{font:700 23px/1.15 var(--serif);margin:0 0 6px}
+.pc .v{font:500 18px/1.45 var(--serif);color:#d8cfb6;white-space:pre-line;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+.pc .ft{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px;font-size:13px;color:var(--muted)}
+.pc .ft b{color:var(--gold2);font-weight:700}
+.oro{display:inline-flex;align-items:center;gap:4px;color:var(--gold);font-weight:800}
+.oro svg{width:15px;height:15px}
+.tema{display:inline-block;font-size:11px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:var(--gold);border:1px solid #d9b45a55;border-radius:999px;padding:3px 9px}
+.row{display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;margin:0 -16px;padding:2px 16px 6px;scrollbar-width:none}
+.row::-webkit-scrollbar{display:none}
+.row .pc{flex:0 0 78%;scroll-snap-align:start}
+
+/* chips */
+.chips{display:flex;gap:8px;overflow-x:auto;margin:0 -16px;padding:4px 16px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chips button,.chips a{flex:none;padding:8px 14px;border-radius:999px;border:1px solid var(--line);background:var(--s1);font-weight:700;font-size:14px;text-decoration:none;cursor:pointer;text-transform:capitalize}
+.chips [aria-pressed=true]{background:var(--goldg);border-color:transparent;color:#1a1408}
+.search{display:flex;align-items:center;gap:10px;background:var(--s1);border:1px solid var(--line);border-radius:14px;padding:0 14px;margin:8px 0 10px}
+.search svg{width:18px;height:18px;color:var(--muted);flex:none}
+.search input{flex:1;background:none;border:0;outline:0;padding:13px 0;font-size:16px}
+
+/* lectura */
+.read{padding-top:8px}
+.read .bk{display:inline-flex;align-items:center;gap:6px;background:none;border:0;color:var(--muted);font-weight:700;padding:6px 0;cursor:pointer}
+.read .bk svg{width:20px;height:20px}
+.read h1{font:700 40px/1.08 var(--serif);text-align:center;margin:18px 0 6px}
+.read .au{text-align:center;color:var(--muted);font-size:15px}.read .au a{color:var(--gold2);font-weight:700;text-decoration:none}
+.read .poem{font:500 22px/1.65 var(--serif);white-space:pre-wrap;margin:26px auto 10px;max-width:30em;color:#efe6cf;word-wrap:break-word}
+.read .poem.c{text-align:center}
+.read .fin{text-align:center;color:var(--gold3);font:600 22px var(--serif);letter-spacing:8px;margin:14px 0 20px}
+.bar{position:sticky;bottom:calc(76px + var(--safe-b));display:flex;gap:8px;justify-content:center;padding:10px;background:#0b0a08e6;backdrop-filter:blur(12px);border:1px solid var(--line);border-radius:999px;margin:18px auto 0;width:max-content;max-width:100%}
+.btn.oro-b[aria-pressed=true]{background:var(--goldg);color:#1a1408;border-color:transparent}
+.btn.oro-b.pop svg{animation:pop .45s ease}
+@keyframes pop{40%{transform:scale(1.5) rotate(-12deg)}}
+.tsize{display:flex;gap:6px;justify-content:center;margin-top:6px}
+
+/* perfil */
+.prof{text-align:center;padding:20px 0 6px}
+.av{width:86px;height:86px;border-radius:50%;margin:0 auto 10px;display:grid;place-items:center;font:700 40px var(--serif);color:#1a1408;background:var(--goldg);box-shadow:0 0 0 4px var(--bg),0 0 0 5px var(--gold3)}
+.prof h1{font:700 32px/1.1 var(--serif);margin:4px 0}
+.prof p{color:var(--muted);margin:4px auto;max-width:30em}
+.stats{display:flex;justify-content:center;gap:26px;margin:12px 0 4px}
+.stats div{text-align:center}.stats b{display:block;font:700 26px var(--serif);color:var(--gold2)}.stats small{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:1.4px}
+
+/* formularios */
+.form{display:flex;flex-direction:column;gap:14px;margin-top:10px}
+.form label{display:flex;flex-direction:column;gap:6px;font-weight:700;font-size:14px;color:var(--muted)}
+.form input,.form select,.form textarea{background:var(--s1);border:1px solid var(--line);border-radius:14px;padding:13px 14px;font-size:16px;color:var(--ink);outline:0;width:100%}
+.form input:focus,.form textarea:focus,.form select:focus{border-color:var(--gold3)}
+.form textarea.verso{font:500 21px/1.6 var(--serif);min-height:52vh;resize:vertical}
+.form input.tit{font:700 26px var(--serif)}
+.note{font-size:13px;color:var(--muted);margin:6px 0}
+.err{color:#ff8f7a;font-weight:700;font-size:14px;min-height:1em;margin:0}
+.box{background:var(--s1);border:1px solid var(--line);border-radius:18px;padding:16px 18px;margin-top:12px}
+.tabs2{display:flex;background:var(--s1);border:1px solid var(--line);border-radius:999px;padding:4px;margin:14px 0}
+.tabs2 button{flex:1;border:0;background:none;padding:10px;border-radius:999px;font-weight:800;cursor:pointer;color:var(--muted)}
+.tabs2 button[aria-pressed=true]{background:var(--goldg);color:#1a1408}
+.estado{font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;padding:3px 9px;border-radius:999px}
+.estado.publicado{background:#d9b45a22;color:var(--gold2)}.estado.revision{background:#6b8cff22;color:#a9bbff}
+.estado.rechazado,.estado.oculto{background:#ff8f7a1f;color:#ff8f7a}
+.mine{display:flex;flex-direction:column;gap:6px;padding:14px 0;border-bottom:1px solid var(--line)}.mine:last-child{border:0}
+.mine h3{font:700 21px var(--serif);margin:0}
+.empty{text-align:center;color:var(--muted);padding:34px 10px;font:500 italic 20px/1.5 var(--serif)}
+
+/* barra de abajo */
+.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:20;display:flex;justify-content:space-around;align-items:flex-end;padding:8px 6px calc(8px + var(--safe-b));background:#0b0a08f2;backdrop-filter:blur(14px);border-top:1px solid var(--line)}
+.tabbar:empty{display:none}
+.tabbar a{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:11px;font-weight:700;color:var(--dim);text-decoration:none}
+.tabbar a svg{width:23px;height:23px}
+.tabbar a[aria-current=page]{color:var(--gold)}
+.tabbar a.pen{margin-top:-24px}
+.tabbar a.pen span.c{width:56px;height:56px;border-radius:50%;display:grid;place-items:center;background:var(--goldg);color:#1a1408;box-shadow:0 8px 26px #d9b45a55,0 0 0 5px var(--bg)}
+.tabbar a.pen svg{width:26px;height:26px}
+
+.toast{position:fixed;left:50%;bottom:calc(96px + var(--safe-b));transform:translateX(-50%);z-index:50;background:#f3ecd8;color:#14120e;font-weight:700;padding:11px 18px;border-radius:999px;box-shadow:0 10px 30px #0008;max-width:90vw;text-align:center}
+.sheet{position:fixed;inset:0;z-index:40;background:#000a;display:flex;align-items:flex-end;justify-content:center}
+.sheet>div{background:var(--s2);border:1px solid var(--line);border-radius:22px 22px 0 0;padding:20px 18px calc(20px + var(--safe-b));width:100%;max-width:640px}
+.sheet img{width:100%;border-radius:12px;display:block;margin-bottom:12px}
+.spin{display:inline-block;width:14px;height:14px;border:2px solid var(--gold3);border-top-color:var(--gold2);border-radius:50%;animation:sp 1s linear infinite;vertical-align:-2px}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media(min-width:700px){.row .pc{flex-basis:46%}}
