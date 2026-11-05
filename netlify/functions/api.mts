@@ -109,13 +109,14 @@ async function route(req: Request, _ctx: Context) {
   /* ===== lectura pública ===== */
   if (M === "GET" && p[0] === "poemas" && !p[1]) {
     const s = await settings(), L = (await all("poema/")).filter(x => x.estado === "publicado");
-    const bloq = new Set((await all("poeta/")).filter(u => u.bloqueado).map(u => u.slug));
+    // Poetas en pausa: sus poemas no los ve nadie más, pero ellos los siguen viendo como siempre (no se enteran)
+    const yo = me()?.u, bloq = new Set((await all("poeta/")).filter(u => u.bloqueado || (u.pausado && u.slug !== yo)).map(u => u.slug));
     const V = L.filter(x => !bloq.has(x.autor)).sort((a, b) => (b.pubAt || b.at) - (a.pubAt || a.at));
     const dia = poemaDelDia(V, s.diaManual);
     return json({ poemas: V.map(pubPoema), dia: dia ? dia.id : null });
   }
   if (M === "GET" && p[0] === "poeta" && p[1]) {
-    const u = await db().get("poeta/" + slug(p[1]), { type: "json" }) as any; if (!u || u.bloqueado) return fail("Ese poeta no existe", 404);
+    const u = await db().get("poeta/" + slug(p[1]), { type: "json" }) as any; if (!u || u.bloqueado || (u.pausado && me()?.u !== u.slug)) return fail("Ese poeta no existe", 404);
     const L = (await all("poema/")).filter(x => x.autor === u.slug && x.estado === "publicado").sort((a, b) => b.at - a.at);
     return json({ poeta: pubPoeta(u), poemas: L.map(pubPoema) });
   }
@@ -193,10 +194,10 @@ async function route(req: Request, _ctx: Context) {
     if (p[1] === "poemas" && p[2] && M === "DELETE") { await db().delete("poema/" + String(p[2]).replace(/[^a-z0-9]/g, "")); return json({ ok: true }); }
     if (p[1] === "poetas" && M === "GET") {
       const L = await all("poema/");
-      return json({ poetas: (await all("poeta/")).sort((a, b) => b.at - a.at).map(u => ({ ...pubPoeta(u), bloqueado: !!u.bloqueado, poemas: L.filter(x => x.autor === u.slug).length, oros: L.filter(x => x.autor === u.slug).reduce((a, x) => a + (x.oros || 0), 0) })) });
+      return json({ poetas: (await all("poeta/")).sort((a, b) => b.at - a.at).map(u => ({ ...pubPoeta(u), bloqueado: !!u.bloqueado, pausado: !!u.pausado, poemas: L.filter(x => x.autor === u.slug).length, oros: L.filter(x => x.autor === u.slug).reduce((a, x) => a + (x.oros || 0), 0) })) });
     }
     if (p[1] === "poetas" && p[2] && M === "PATCH") {
-      const b = await body(), u = await mutate("poeta/" + slug(p[2]), v => ({ ...v, bloqueado: !!b.bloqueado }));
+      const b = await body(), u = await mutate("poeta/" + slug(p[2]), v => ({ ...v, ...(b.bloqueado !== undefined ? { bloqueado: !!b.bloqueado } : {}), ...(b.pausado !== undefined ? { pausado: !!b.pausado } : {}) }));
       return u ? json({ ok: true }) : fail("Ese poeta no existe", 404);
     }
     if (p[1] === "settings") {

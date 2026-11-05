@@ -30,7 +30,7 @@ async function api(path, method = "GET", body, auth) {
   if (!r.ok) { const e = new Error(d.error || "Algo salió mal"); e.status = r.status; throw e; } return d;
 }
 async function load() {
-  try { const d = await api("poemas"); st.poemas = d.poemas; st.dia = d.dia; } catch { toast("Sin conexión. Te muestro lo que ya habías visto."); }
+  try { const d = await api("poemas", "GET", null, true); st.poemas = d.poemas; st.dia = d.dia; } catch { toast("Sin conexión. Te muestro lo que ya habías visto."); }
   st.ready = true; route();
 }
 
@@ -145,7 +145,7 @@ async function tarjeta(p) {
 async function poeta(slug) {
   const app = $("#app"); app.innerHTML = `<div class="wrap">${topbar()}<p class="empty"><span class="spin"></span></p></div>`;
   try {
-    const { poeta: u, poemas } = await api("poeta/" + encodeURIComponent(slug)), oros = poemas.reduce((a, p) => a + p.oros, 0);
+    const { poeta: u, poemas } = await api("poeta/" + encodeURIComponent(slug), "GET", null, true), oros = poemas.reduce((a, p) => a + p.oros, 0);
     app.innerHTML = `<div class="wrap">${topbar()}<div class="prof"><div class="av">${esc(u.alias[0] || "V").toUpperCase()}</div><h1>${esc(u.alias)}</h1>${u.ciudad ? `<p>${esc(u.ciudad)}</p>` : ""}${u.bio ? `<p style="font:500 italic 19px/1.45 var(--serif);color:#d8cfb6">${esc(u.bio)}</p>` : ""}
       <div class="stats"><div><b>${poemas.length}</b><small>Poemas</small></div><div><b>${oros}</b><small>Oros</small></div><div><b>${new Date(u.at).getFullYear()}</b><small>Desde</small></div></div>
       <button class="btn sm" id="bShP" style="margin-top:8px">${ico("link")}Compartir perfil</button></div>
@@ -182,7 +182,7 @@ function afterAcceso(modo, next) {
       const d = modo === "entrar" ? await api("entrar", "POST", { alias: $("#a_n").value, clave: $("#a_c").value })
         : await api("registro", "POST", { alias: $("#a_n").value, clave: $("#a_c").value, ciudad: $("#a_ci").value, bio: $("#a_b").value, web: $("#a_w").value });
       st.sesion = d; LS.set("sesion", d); toast(modo === "entrar" ? "Bienvenido de vuelta, " + d.poeta.alias : "¡Bienvenido a la casa, " + d.poeta.alias + "!");
-      next ? next() : route();
+      load2().catch(() => { }).then(() => next ? next() : route());
     } catch (x) { $("#a_e").textContent = x.message; b.disabled = false; }
   };
 }
@@ -209,7 +209,7 @@ async function cuaderno() {
       : `<p class="empty">Tu cuaderno está en blanco.<br>Es el mejor momento para empezar.</p><a class="btn gold-b wide" href="#/escribir">${ico("pen")}Escribir mi primer poema</a>`}</div>
   </div>`;
   st.mios = P;
-  $("#bOut").onclick = () => { st.sesion = null; LS.set("sesion", null); toast("Saliste de tu cuenta"); route(); };
+  $("#bOut").onclick = () => { st.sesion = null; LS.set("sesion", null); toast("Saliste de tu cuenta"); load2().catch(() => { }).then(route); };
   $("#bPf").onclick = () => { $("#pf").hidden = !$("#pf").hidden; };
   $("#pf").onsubmit = async e => { e.preventDefault(); try { const r = await api("yo/perfil", "PUT", { ciudad: $("#p_ci").value, bio: $("#p_b").value }, true); st.sesion.poeta = r.poeta; LS.set("sesion", st.sesion); toast("Perfil guardado"); cuaderno(); } catch (x) { toast(x.message); } };
   document.querySelectorAll("[data-del]").forEach(b => b.onclick = async () => { if (b.dataset.k !== "1") { b.dataset.k = "1"; b.textContent = "¿Seguro? Toca otra vez"; return; } try { await api("yo/poemas/" + b.dataset.del, "DELETE", null, true); toast("Poema borrado"); st.poemas = st.poemas.filter(p => p.id !== b.dataset.del); cuaderno(); } catch (x) { toast(x.message); } });
@@ -277,7 +277,7 @@ async function route() {
   else if (path === "/cuaderno") { tabbar("#/cuaderno"); cuaderno(); }
   else { tabbar("#/"); app.innerHTML = home(); }
 }
-async function load2() { const d = await api("poemas"); st.poemas = d.poemas; st.dia = d.dia; }
+async function load2() { const d = await api("poemas", "GET", null, true); st.poemas = d.poemas; st.dia = d.dia; }
 addEventListener("hashchange", route);
 if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => { }));
 load();
