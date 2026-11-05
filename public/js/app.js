@@ -3,7 +3,7 @@ const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const LS = { get(k, d) { try { const v = localStorage.getItem("vdo." + k); return v == null ? d : JSON.parse(v); } catch { return d; } }, set(k, v) { try { localStorage.setItem("vdo." + k, JSON.stringify(v)); } catch { } } };
 function toast(m, ms = 2400) { const t = $("#toast"); t.textContent = m; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, ms); }
-const TEMAS = { amor: "Amor", desamor: "Desamor", vida: "Vida", muerte: "Muerte", soledad: "Soledad", esperanza: "Esperanza", naturaleza: "Naturaleza", fe: "Fe", tierra: "Mi tierra", libre: "Tema libre" };
+const TEMAS = { amor: "Amor", desamor: "Desamor", soledad: "Soledad", tristeza: "Tristeza", felicidad: "Felicidad", vida: "Vida", muerte: "Muerte", esperanza: "Esperanza", naturaleza: "Naturaleza", fe: "Fe", tierra: "Mi tierra", personal: "Personales", reflexion: "Reflexiones", libre: "Uso libre" };
 const I = {
   home: '<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>',

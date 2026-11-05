@@ -1,6 +1,7 @@
 // Versos de Oro: poetas con cuenta, poemas que pasan por tu revisión, «oros» (me gusta) y tu administrador.
 import { getStore } from "@netlify/blobs";
 import type { Config, Context } from "@netlify/functions";
+import diarios from "../../diarios.json" with { type: "json" };
 import { createHmac, timingSafeEqual, scryptSync, randomBytes } from "node:crypto";
 
 const db = () => getStore({ name: "versos", consistency: "strong" });
@@ -21,7 +22,26 @@ function verify(t: string) {
 const hash = (pw: string, salt: string) => scryptSync(pw, salt, 32).toString("hex");
 const slug = (s: string) => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30);
 const txt = (v: unknown, n: number) => String(v ?? "").replace(/\r/g, "").trim().slice(0, n);
-const TEMAS = ["amor", "desamor", "vida", "muerte", "soledad", "esperanza", "naturaleza", "fe", "tierra", "libre"];
+const TEMAS = ["amor", "desamor", "soledad", "tristeza", "felicidad", "vida", "muerte", "esperanza", "naturaleza", "fe", "tierra", "personal", "reflexion", "libre"];
+/* Los 5 poemas diarios de la casa: vienen en diarios.json por fecha y entran a revisión el día que les toca.
+   Nunca se publican solos: tú decides Publicar o Denegar. Si los niegas no vuelven a entrar. */
+const hoyMX = () => new Date(Date.now() - 6 * 3600e3).toISOString().slice(0, 10);
+async function importarDiarios() {
+  const s = db(), hoy = hoyMX(), hechos: string[] = ((await s.get("config/diarios", { type: "json" })) as string[]) || [];
+  const pend = Object.keys(diarios as Record<string, any[]>).filter(f => f <= hoy && !hechos.includes(f)).sort();
+  if (!pend.length) return;
+  const salt = randomBytes(12).toString("hex");
+  await s.setJSON("poeta/versos-de-oro", { slug: "versos-de-oro", alias: "Versos de Oro", bio: "Poemas de la casa: cinco nuevos cada día, escritos para ti.", ciudad: "", salt, hash: hash(randomBytes(24).toString("hex"), salt), at: Date.now(), casa: true }, { onlyIfNew: true });
+  for (const f of pend) {
+    const L = (diarios as Record<string, any[]>)[f] || [];
+    await Promise.all(L.slice(0, 10).map((x, i) => {
+      const id = "d" + f.replace(/-/g, "") + "abcdefghij"[i];
+      return s.setJSON("poema/" + id, { id, titulo: txt(x.titulo, 120), texto: txt(x.texto, 8000), tema: TEMAS.includes(x.tema) ? x.tema : "libre", autor: "versos-de-oro", alias: "Versos de Oro", at: Date.now() + i, pubAt: 0, oros: 0, estado: "revision", casa: true }, { onlyIfNew: true });
+    }));
+  }
+  const now = ((await s.get("config/diarios", { type: "json" })) as string[]) || [];
+  await s.setJSON("config/diarios", [...new Set([...now, ...pend])].slice(-400));
+}
 const DEF = { revisar: true, diaManual: "" };
 async function settings() { return { ...DEF, ...(((await db().get("config/settings", { type: "json" })) as any) || {}) }; }
 async function mutate(key: string, fn: (v: any) => any) {
@@ -38,7 +58,7 @@ async function all(prefix: string) {
   return (await Promise.all(blobs.map(x => s.get(x.key, { type: "json" })))).filter(Boolean) as any[];
 }
 const pubPoeta = (p: any) => ({ slug: p.slug, alias: p.alias, bio: p.bio || "", ciudad: p.ciudad || "", at: p.at });
-const pubPoema = (x: any) => ({ id: x.id, titulo: x.titulo, texto: x.texto, tema: x.tema, autor: x.autor, alias: x.alias, at: x.at, pubAt: x.pubAt || x.at, oros: x.oros || 0, estado: x.estado, nota: x.nota || "" });
+const pubPoema = (x: any) => ({ id: x.id, titulo: x.titulo, texto: x.texto, tema: x.tema, autor: x.autor, alias: x.alias, at: x.at, pubAt: x.pubAt || x.at, oros: x.oros || 0, estado: x.estado, nota: x.nota || "", casa: !!x.casa });
 // Poema del día: el que elijas tú, o uno de los más queridos que va cambiando cada día
 function poemaDelDia(L: any[], manual: string) {
   const m = manual && L.find(x => x.id === manual); if (m) return m;
@@ -138,6 +158,7 @@ async function route(req: Request, _ctx: Context) {
   /* ===== administrador (tú) ===== */
   if (p[0] === "admin") {
     if (!isAdmin(req)) return fail("Clave de administrador incorrecta", 401);
+    try { await importarDiarios(); } catch (e) { console.error("diarios", e); }
     if (p[1] === "resumen" && M === "GET") {
       const L = await all("poema/"), U = await all("poeta/"), s = await settings();
       const pub = L.filter(x => x.estado === "publicado"), dia = poemaDelDia(pub, s.diaManual);
