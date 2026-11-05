@@ -26,17 +26,30 @@ const TEMAS = ["amor", "desamor", "soledad", "tristeza", "felicidad", "vida", "m
 /* Los 5 poemas diarios de la casa: vienen en diarios.json por fecha y entran a revisión el día que les toca.
    Nunca se publican solos: tú decides Publicar o Denegar. Si los niegas no vuelven a entrar. */
 const hoyMX = () => new Date(Date.now() - 6 * 3600e3).toISOString().slice(0, 10);
+// Los poemas diarios salen a nombre de tu cuenta de poeta (MR.CH)
+const AUTOR_DIARIOS = "mr-ch";
+async function autorDiarios() {
+  const u = await db().get("poeta/" + AUTOR_DIARIOS, { type: "json" }) as any;
+  return { slug: AUTOR_DIARIOS, alias: u?.alias || "MR.CH" };
+}
+// Una sola vez: pasa a tu cuenta los poemas diarios que ya habían entrado a nombre de la casa
+async function pasarDiariosATuCuenta() {
+  const s = db(); if (await s.get("config/migr-mrch")) return;
+  const a = await autorDiarios();
+  for (const x of await all("poema/")) if (x.casa && x.autor === "versos-de-oro") await s.setJSON("poema/" + x.id, { ...x, autor: a.slug, alias: a.alias });
+  await s.delete("poeta/versos-de-oro"); await s.set("config/migr-mrch", "1");
+}
 async function importarDiarios() {
+  await pasarDiariosATuCuenta();
   const s = db(), hoy = hoyMX(), hechos: string[] = ((await s.get("config/diarios", { type: "json" })) as string[]) || [];
   const pend = Object.keys(diarios as Record<string, any[]>).filter(f => f <= hoy && !hechos.includes(f)).sort();
   if (!pend.length) return;
-  const salt = randomBytes(12).toString("hex");
-  await s.setJSON("poeta/versos-de-oro", { slug: "versos-de-oro", alias: "Versos de Oro", bio: "Poemas de la casa: cinco nuevos cada día, escritos para ti.", ciudad: "", salt, hash: hash(randomBytes(24).toString("hex"), salt), at: Date.now(), casa: true }, { onlyIfNew: true });
+  const a = await autorDiarios();
   for (const f of pend) {
     const L = (diarios as Record<string, any[]>)[f] || [];
     await Promise.all(L.slice(0, 10).map((x, i) => {
       const id = "d" + f.replace(/-/g, "") + "abcdefghij"[i];
-      return s.setJSON("poema/" + id, { id, titulo: txt(x.titulo, 120), texto: txt(x.texto, 8000), tema: TEMAS.includes(x.tema) ? x.tema : "libre", autor: "versos-de-oro", alias: "Versos de Oro", at: Date.now() + i, pubAt: 0, oros: 0, estado: "revision", casa: true }, { onlyIfNew: true });
+      return s.setJSON("poema/" + id, { id, titulo: txt(x.titulo, 120), texto: txt(x.texto, 8000), tema: TEMAS.includes(x.tema) ? x.tema : "libre", autor: a.slug, alias: a.alias, at: Date.now() + i, pubAt: 0, oros: 0, estado: "revision", casa: true }, { onlyIfNew: true });
     }));
   }
   const now = ((await s.get("config/diarios", { type: "json" })) as string[]) || [];

@@ -54,7 +54,7 @@ function item(p, rev) {
   return `<div class="adm"><div class="sw"><h3>${esc(p.titulo)}</h3><span class="estado ${p.estado}">${ET[p.estado]}</span></div>
     <small class="note" style="margin:0">de <b style="color:var(--gold2)">${esc(p.alias)}</b> · ${TEMAS[p.tema] || ""} · ${fdate(p.at)}${p.estado === "publicado" ? ` · ✦ ${p.oros} oros` : ""}</small>
     <div class="v">${esc(p.texto)}</div>
-    ${p.casa ? `<span class="estado publicado" style="width:max-content">✦ Poema diario de la casa</span>` : ""}${!p.casa && (rev || p.estado !== "publicado") ? `<input id="n_${p.id}" placeholder="Nota para el poeta si no lo apruebas (opcional)" value="${esc(p.nota)}">` : ""}
+    ${p.casa ? `<span class="estado publicado" style="width:max-content">✦ Poema diario para MR.CH</span>` : ""}${!p.casa && (rev || p.estado !== "publicado") ? `<input id="n_${p.id}" placeholder="Nota para el poeta si no lo apruebas (opcional)" value="${esc(p.nota)}">` : ""}
     <div class="acts">${p.estado !== "publicado" ? `<button class="btn sm gold-b" data-st="publicado" data-id="${p.id}">✓ Publicar</button>` : `<a class="btn sm" href="/#/poema/${p.id}" target="_blank">Ver</a><button class="btn sm" data-dia="${p.id}">Poema del día</button><button class="btn sm" data-st="oculto" data-id="${p.id}">Retirar</button>`}
       ${p.estado === "revision" ? (p.casa ? `<button class="btn sm" data-del="${p.id}">✕ Denegar</button>` : `<button class="btn sm" data-st="rechazado" data-id="${p.id}">✕ Denegar</button>`) : ""}${p.casa && p.estado === "revision" ? "" : `<button class="btn sm" data-del="${p.id}">Borrar</button>`}</div></div>`;
 }
