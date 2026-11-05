@@ -7,6 +7,9 @@
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 [hidden]{display:none!important}
+/* Que al tocar títulos o versos no salga la búsqueda de Google («Tocar para buscar») ni la selección de texto */
+body{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+input,textarea,select,[contenteditable]{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
 html{background:var(--bg)}
 body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 var(--sans);min-height:100dvh;
   background-image:radial-gradient(120% 60% at 50% -10%,#2a2213 0%,transparent 60%);background-attachment:fixed}
