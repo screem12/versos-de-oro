@@ -171,7 +171,7 @@ function acceso(modo = "entrar", msg = "") {
       ${modo === "registro" ? `<label>¿De dónde escribes? (opcional)<input id="a_ci" maxlength="60" placeholder="Ciudad, país"></label><label>Unas palabras sobre ti (opcional)<textarea id="a_b" rows="3" maxlength="300" placeholder="Qué te mueve a escribir…"></textarea></label><input id="a_w" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true">` : ""}
       <p class="err" id="a_e"></p>
       <button class="btn gold-b wide" type="submit">${modo === "entrar" ? "Entrar" : "Crear mi cuenta"}</button>
-      ${modo === "registro" ? `<p class="note" style="text-align:center">Guarda bien tu contraseña: es la llave de tus poemas.</p>` : ""}
+      ${modo === "registro" ? `<p class="note" style="text-align:center">Guarda bien tu contraseña: es la llave de tus poemas.</p>` : `<p class="note" style="text-align:center">¿Olvidaste tu contraseña? Escríbele al administrador de Versos de Oro y te pone una nueva.</p>`}
     </form></div>`;
 }
 function afterAcceso(modo, next) {
@@ -198,8 +198,9 @@ async function cuaderno() {
   app.innerHTML = `<div class="wrap">${topbar()}
     <div class="prof"><div class="av">${esc(u.alias[0] || "V").toUpperCase()}</div><h1>${esc(u.alias)}</h1>${u.ciudad ? `<p>${esc(u.ciudad)}</p>` : ""}
       <div class="stats"><div><b>${pub.length}</b><small>Publicados</small></div><div><b>${oros}</b><small>Oros</small></div><div><b>${P.length - pub.length}</b><small>Otros</small></div></div>
-      <div class="acts" style="justify-content:center;margin-top:8px"><a class="btn sm" href="#/poeta/${u.slug}">Ver mi perfil público</a><button class="btn sm" id="bPf">Editar perfil</button><button class="btn sm" id="bOut">Salir</button></div></div>
+      <div class="acts" style="justify-content:center;margin-top:8px"><a class="btn sm" href="#/poeta/${u.slug}">Ver mi perfil público</a><button class="btn sm" id="bPf">Editar perfil</button><button class="btn sm" id="bCl">Cambiar contraseña</button><button class="btn sm" id="bOut">Salir</button></div></div>
     ${d.dueno ? `<a class="box adminsw" href="/admin.html"><span class="ic">⚙</span><span><b>Modo administrador</b><br><small>Solo tú lo ves. Revisa, publica o deniega poemas, pausa poetas y elige el poema del día.</small></span><span class="go">Entrar ›</span></a>` : ""}
+    <form class="form box" id="cf" hidden novalidate><label>Contraseña actual<input id="c_a" type="password" autocomplete="current-password"></label><label>Contraseña nueva<input id="c_n" type="password" autocomplete="new-password" placeholder="Mínimo 6 caracteres"></label><label>Repite la nueva<input id="c_r" type="password" autocomplete="new-password"></label><p class="err" id="c_e"></p><button class="btn gold-b" type="submit">Cambiar contraseña</button></form>
     <form class="form box" id="pf" hidden><label>¿De dónde escribes?<input id="p_ci" maxlength="60" value="${esc(u.ciudad)}"></label><label>Unas palabras sobre ti<textarea id="p_b" rows="3" maxlength="300">${esc(u.bio)}</textarea></label><button class="btn gold-b" type="submit">Guardar</button></form>
     ${borr && (borr.texto || borr.titulo) ? `<div class="box"><b>Tienes un borrador sin publicar</b><p class="note">${esc(borr.titulo || "Sin título")}</p><a class="btn sm gold-b" href="#/escribir">Seguir escribiendo</a></div>` : ""}
     ${d.revisar ? `<p class="note" style="text-align:center;margin-top:14px">Cada poema nuevo pasa por una revisión antes de publicarse, para cuidar la calidad de la casa.</p>` : ""}
@@ -212,7 +213,11 @@ async function cuaderno() {
   </div>`;
   st.mios = P;
   $("#bOut").onclick = () => { st.sesion = null; LS.set("sesion", null); toast("Saliste de tu cuenta"); load2().catch(() => { }).then(route); };
-  $("#bPf").onclick = () => { $("#pf").hidden = !$("#pf").hidden; };
+  $("#bPf").onclick = () => { $("#pf").hidden = !$("#pf").hidden; $("#cf").hidden = true; };
+  $("#bCl").onclick = () => { $("#cf").hidden = !$("#cf").hidden; $("#pf").hidden = true; };
+  $("#cf").onsubmit = async e => { e.preventDefault(); $("#c_e").textContent = "";
+    if ($("#c_n").value !== $("#c_r").value) return $("#c_e").textContent = "Las contraseñas nuevas no son iguales";
+    try { const r = await api("yo/clave", "PUT", { actual: $("#c_a").value, nueva: $("#c_n").value }, true); st.sesion = r; LS.set("sesion", r); toast("Contraseña cambiada"); cuaderno(); } catch (x) { $("#c_e").textContent = x.message; } };
   $("#pf").onsubmit = async e => { e.preventDefault(); try { const r = await api("yo/perfil", "PUT", { ciudad: $("#p_ci").value, bio: $("#p_b").value }, true); st.sesion.poeta = r.poeta; LS.set("sesion", st.sesion); toast("Perfil guardado"); cuaderno(); } catch (x) { toast(x.message); } };
   document.querySelectorAll("[data-del]").forEach(b => b.onclick = async () => { if (b.dataset.k !== "1") { b.dataset.k = "1"; b.textContent = "¿Seguro? Toca otra vez"; return; } try { await api("yo/poemas/" + b.dataset.del, "DELETE", null, true); toast("Poema borrado"); st.poemas = st.poemas.filter(p => p.id !== b.dataset.del); cuaderno(); } catch (x) { toast(x.message); } });
 }

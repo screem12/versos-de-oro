@@ -10,11 +10,13 @@ const fail = (m: string, status = 400) => json({ error: m }, status);
 const secret = () => Netlify.env.get("AUTH_SECRET") || "";
 // Tu cuenta de poeta (MR.CH) es la única que también entra como administrador; las demás son cuentas normales.
 const DUENO = "mr-ch";
-function isAdmin(req: Request) {
+async function isAdmin(req: Request) {
   const k = Netlify.env.get("ADMIN_KEY"), got = req.headers.get("x-admin-key") || "";
   if (k && got && got.length === k.length && timingSafeEqual(Buffer.from(got), Buffer.from(k))) return true;
   const t = verify((req.headers.get("authorization") || "").replace(/^Bearer /, ""));
-  return !!t && t.u === DUENO;
+  if (!t || t.u !== DUENO) return false;
+  const u = await db().get("poeta/" + DUENO, { type: "json" }) as any;
+  return !!u && (u.tv || 0) === (t.v || 0); // si cambias tu contraseña, las sesiones viejas dejan de servir
 }
 const sign = (o: any) => { const b = Buffer.from(JSON.stringify(o)).toString("base64url"); return b + "." + createHmac("sha256", secret()).update(b).digest("base64url"); };
 function verify(t: string) {
@@ -107,7 +109,7 @@ async function route(req: Request, _ctx: Context) {
     const b = await body(), u = await db().get("poeta/" + slug(b.alias), { type: "json" }) as any;
     if (!u || hash(String(b.clave || ""), u.salt) !== u.hash) return fail("Nombre o contraseña incorrectos", 401);
     if (u.bloqueado) return fail("Esta cuenta está suspendida", 403);
-    return json({ token: sign({ u: u.slug, at: Date.now() }), poeta: pubPoeta(u), dueno: u.slug === DUENO });
+    return json({ token: sign({ u: u.slug, v: u.tv || 0, at: Date.now() }), poeta: pubPoeta(u), dueno: u.slug === DUENO });
   }
 
   /* ===== lectura pública ===== */
@@ -139,10 +141,20 @@ async function route(req: Request, _ctx: Context) {
   if (p[0] === "yo") {
     const t = me(); if (!t) return fail("Entra con tu cuenta", 401);
     const u = await db().get("poeta/" + t.u, { type: "json" }) as any; if (!u) return fail("Tu cuenta ya no existe", 401);
+    if ((u.tv || 0) !== (t.v || 0)) return fail("Tu contraseña cambió. Vuelve a entrar.", 401);
     if (u.bloqueado) return fail("Esta cuenta está suspendida", 403);
     if (M === "GET" && !p[1]) {
       const L = (await all("poema/")).filter(x => x.autor === u.slug).sort((a, b) => b.at - a.at);
       return json({ poeta: pubPoeta(u), poemas: L.map(pubPoema), revisar: (await settings()).revisar, dueno: u.slug === DUENO });
+    }
+    // cambiar mi contraseña (pide la actual)
+    if (M === "PUT" && p[1] === "clave") {
+      const b = await body(), nueva = String(b.nueva || "");
+      if (hash(String(b.actual || ""), u.salt) !== u.hash) return fail("Tu contraseña actual no es correcta", 403);
+      if (nueva.length < 6) return fail("La nueva contraseña debe tener al menos 6 caracteres");
+      const salt = randomBytes(12).toString("hex"), tv = (u.tv || 0) + 1;
+      await mutate("poeta/" + u.slug, v => ({ ...v, salt, hash: hash(nueva, salt), tv }));
+      return json({ token: sign({ u: u.slug, v: tv, at: Date.now() }), poeta: pubPoeta(u), dueno: u.slug === DUENO });
     }
     if (M === "PUT" && p[1] === "perfil") {
       const b = await body(); const v = await mutate("poeta/" + u.slug, x => ({ ...x, bio: txt(b.bio, 300), ciudad: txt(b.ciudad, 60) }));
@@ -175,7 +187,7 @@ async function route(req: Request, _ctx: Context) {
 
   /* ===== administrador (tú) ===== */
   if (p[0] === "admin") {
-    if (!isAdmin(req)) return fail("Clave de administrador incorrecta", 401);
+    if (!(await isAdmin(req))) return fail("Clave de administrador incorrecta", 401);
     try { await importarDiarios(); } catch (e) { console.error("diarios", e); }
     if (p[1] === "resumen" && M === "GET") {
       const L = await all("poema/"), U = await all("poeta/"), s = await settings();
@@ -199,6 +211,13 @@ async function route(req: Request, _ctx: Context) {
     if (p[1] === "poetas" && M === "GET") {
       const L = await all("poema/");
       return json({ poetas: (await all("poeta/")).sort((a, b) => b.at - a.at).map(u => ({ ...pubPoeta(u), bloqueado: !!u.bloqueado, pausado: !!u.pausado, poemas: L.filter(x => x.autor === u.slug).length, oros: L.filter(x => x.autor === u.slug).reduce((a, x) => a + (x.oros || 0), 0) })) });
+    }
+    // poner una contraseña nueva a cualquier cuenta (también la tuya, si se te olvida)
+    if (p[1] === "poetas" && p[2] && p[3] === "clave" && M === "PUT") {
+      const b = await body(), nueva = String(b.nueva || ""); if (nueva.length < 6) return fail("La contraseña debe tener al menos 6 caracteres");
+      const salt = randomBytes(12).toString("hex");
+      const u = await mutate("poeta/" + slug(p[2]), v => ({ ...v, salt, hash: hash(nueva, salt), tv: (v.tv || 0) + 1 }));
+      return u ? json({ ok: true }) : fail("Ese poeta no existe", 404);
     }
     if (p[1] === "poetas" && p[2] && M === "PATCH") {
       if (slug(p[2]) === DUENO) return fail("Esa es tu cuenta de dueño");
