@@ -181,16 +181,27 @@ function afterAcceso(modo, next) {
     try {
       const d = modo === "entrar" ? await api("entrar", "POST", { alias: $("#a_n").value, clave: $("#a_c").value })
         : await api("registro", "POST", { alias: $("#a_n").value, clave: $("#a_c").value, ciudad: $("#a_ci").value, bio: $("#a_b").value, web: $("#a_w").value });
-      st.sesion = d; LS.set("sesion", d); toast(modo === "entrar" ? "Bienvenido de vuelta, " + d.poeta.alias : "¡Bienvenido a la casa, " + d.poeta.alias + "!");
+      st.sesion = d; LS.set("sesion", d);
+      if (d.temporal) { const clave = $("#a_c").value; return nuevaClave(clave, () => load2().catch(() => { }).then(() => next ? next() : route())); }
+      toast(modo === "entrar" ? "Bienvenido de vuelta, " + d.poeta.alias : "¡Bienvenido a la casa, " + d.poeta.alias + "!");
       load2().catch(() => { }).then(() => next ? next() : route());
     } catch (x) { $("#a_e").textContent = x.message; b.disabled = false; }
   };
+}
+// Entró con una contraseña de acceso que le diste tú: le pedimos que ponga la suya
+function nuevaClave(actual, listo) {
+  $("#app").innerHTML = `<div class="wrap">${topbar()}<div class="prof" style="padding-bottom:0"><div class="av">🔑</div><h1>Pon tu propia contraseña</h1><p>Entraste con una contraseña de acceso. Ahora escribe una nueva que solo tú sepas.</p></div>
+    <form class="form" id="nf" novalidate><label>Contraseña nueva<input id="n_n" type="password" autocomplete="new-password" placeholder="Mínimo 6 caracteres"></label><label>Repítela<input id="n_r" type="password" autocomplete="new-password"></label><p class="err" id="n_e"></p><button class="btn gold-b wide" type="submit">Guardar mi contraseña</button></form></div>`;
+  $("#nf").onsubmit = async e => { e.preventDefault(); $("#n_e").textContent = "";
+    if ($("#n_n").value !== $("#n_r").value) return $("#n_e").textContent = "Las contraseñas no son iguales";
+    try { const r = await api("yo/clave", "PUT", { actual, nueva: $("#n_n").value }, true); st.sesion = r; LS.set("sesion", r); toast("¡Listo! Ya tienes tu propia contraseña"); listo(); } catch (x) { $("#n_e").textContent = x.message; } };
 }
 async function cuaderno() {
   const app = $("#app");
   if (!st.sesion) { app.innerHTML = acceso("entrar"); afterAcceso("entrar"); return; }
   app.innerHTML = `<div class="wrap">${topbar()}<p class="empty"><span class="spin"></span></p></div>`;
   let d; try { d = await api("yo", "GET", null, true); } catch (e) { if (e.status === 401 || e.status === 403) { app.innerHTML = acceso("entrar", e.message); afterAcceso("entrar"); } else app.innerHTML = `<div class="wrap">${topbar()}<p class="empty">${esc(e.message)}</p></div>`; return; }
+  if (d.temporal) { app.innerHTML = acceso("entrar", "Entra con la contraseña de acceso que te dieron para poner la tuya."); afterAcceso("entrar"); return; }
   if (st.sesion.dueno !== !!d.dueno) { st.sesion.dueno = !!d.dueno; LS.set("sesion", st.sesion); }
   const u = d.poeta, P = d.poemas, pub = P.filter(p => p.estado === "publicado"), oros = pub.reduce((a, p) => a + p.oros, 0);
   const borr = LS.get("borrador", null);

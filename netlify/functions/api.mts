@@ -109,7 +109,7 @@ async function route(req: Request, _ctx: Context) {
     const b = await body(), u = await db().get("poeta/" + slug(b.alias), { type: "json" }) as any;
     if (!u || hash(String(b.clave || ""), u.salt) !== u.hash) return fail("Nombre o contraseña incorrectos", 401);
     if (u.bloqueado) return fail("Esta cuenta está suspendida", 403);
-    return json({ token: sign({ u: u.slug, v: u.tv || 0, at: Date.now() }), poeta: pubPoeta(u), dueno: u.slug === DUENO });
+    return json({ token: sign({ u: u.slug, v: u.tv || 0, at: Date.now() }), poeta: pubPoeta(u), dueno: u.slug === DUENO, temporal: !!u.temporal });
   }
 
   /* ===== lectura pública ===== */
@@ -145,7 +145,7 @@ async function route(req: Request, _ctx: Context) {
     if (u.bloqueado) return fail("Esta cuenta está suspendida", 403);
     if (M === "GET" && !p[1]) {
       const L = (await all("poema/")).filter(x => x.autor === u.slug).sort((a, b) => b.at - a.at);
-      return json({ poeta: pubPoeta(u), poemas: L.map(pubPoema), revisar: (await settings()).revisar, dueno: u.slug === DUENO });
+      return json({ poeta: pubPoeta(u), poemas: L.map(pubPoema), revisar: (await settings()).revisar, dueno: u.slug === DUENO, temporal: !!u.temporal });
     }
     // cambiar mi contraseña (pide la actual)
     if (M === "PUT" && p[1] === "clave") {
@@ -153,7 +153,8 @@ async function route(req: Request, _ctx: Context) {
       if (hash(String(b.actual || ""), u.salt) !== u.hash) return fail("Tu contraseña actual no es correcta", 403);
       if (nueva.length < 6) return fail("La nueva contraseña debe tener al menos 6 caracteres");
       const salt = randomBytes(12).toString("hex"), tv = (u.tv || 0) + 1;
-      await mutate("poeta/" + u.slug, v => ({ ...v, salt, hash: hash(nueva, salt), tv }));
+      if (nueva === String(b.actual || "")) return fail("La nueva debe ser distinta a la de acceso");
+      await mutate("poeta/" + u.slug, v => ({ ...v, salt, hash: hash(nueva, salt), tv, temporal: false }));
       return json({ token: sign({ u: u.slug, v: tv, at: Date.now() }), poeta: pubPoeta(u), dueno: u.slug === DUENO });
     }
     if (M === "PUT" && p[1] === "perfil") {
@@ -210,13 +211,13 @@ async function route(req: Request, _ctx: Context) {
     if (p[1] === "poemas" && p[2] && M === "DELETE") { await db().delete("poema/" + String(p[2]).replace(/[^a-z0-9]/g, "")); return json({ ok: true }); }
     if (p[1] === "poetas" && M === "GET") {
       const L = await all("poema/");
-      return json({ poetas: (await all("poeta/")).sort((a, b) => b.at - a.at).map(u => ({ ...pubPoeta(u), bloqueado: !!u.bloqueado, pausado: !!u.pausado, poemas: L.filter(x => x.autor === u.slug).length, oros: L.filter(x => x.autor === u.slug).reduce((a, x) => a + (x.oros || 0), 0) })) });
+      return json({ poetas: (await all("poeta/")).sort((a, b) => b.at - a.at).map(u => ({ ...pubPoeta(u), bloqueado: !!u.bloqueado, pausado: !!u.pausado, temporal: !!u.temporal, poemas: L.filter(x => x.autor === u.slug).length, oros: L.filter(x => x.autor === u.slug).reduce((a, x) => a + (x.oros || 0), 0) })) });
     }
     // poner una contraseña nueva a cualquier cuenta (también la tuya, si se te olvida)
     if (p[1] === "poetas" && p[2] && p[3] === "clave" && M === "PUT") {
       const b = await body(), nueva = String(b.nueva || ""); if (nueva.length < 6) return fail("La contraseña debe tener al menos 6 caracteres");
       const salt = randomBytes(12).toString("hex");
-      const u = await mutate("poeta/" + slug(p[2]), v => ({ ...v, salt, hash: hash(nueva, salt), tv: (v.tv || 0) + 1 }));
+      const u = await mutate("poeta/" + slug(p[2]), v => ({ ...v, salt, hash: hash(nueva, salt), tv: (v.tv || 0) + 1, temporal: true }));
       return u ? json({ ok: true }) : fail("Ese poeta no existe", 404);
     }
     if (p[1] === "poetas" && p[2] && M === "PATCH") {
