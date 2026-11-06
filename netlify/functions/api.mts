@@ -46,8 +46,21 @@ async function pasarDiariosATuCuenta() {
   for (const x of await all("poema/")) if (x.casa && x.autor === "versos-de-oro") await s.setJSON("poema/" + x.id, { ...x, autor: a.slug, alias: a.alias });
   await s.delete("poeta/versos-de-oro"); await s.set("config/migr-mrch", "1");
 }
+// Una sola vez (6 nov 2026): el dueño pidió quitar los poemas diarios anteriores. Van a la papelera (se pueden recuperar)
+// y solo entra la tanda nueva; los días anteriores ya no se vuelven a importar.
+const TANDA_NUEVA = "2026-11-06.2";
+async function limpiezaDiarios() {
+  const s = db(); if (await s.get("config/limpieza-1")) return;
+  for (const x of await all("poema/")) if (x.casa && x.estado !== "papelera" && !String(x.id).startsWith("d" + TANDA_NUEVA.replace(/[^0-9]/g, "")))
+    await s.setJSON("poema/" + x.id, { ...x, estado: "papelera", antes: x.estado, borradoAt: Date.now(), borradoPor: "admin" });
+  const viejos = Object.keys(diarios as Record<string, any[]>).filter(f => f !== TANDA_NUEVA);
+  const hechos: string[] = ((await s.get("config/diarios", { type: "json" })) as string[]) || [];
+  await s.setJSON("config/diarios", [...new Set([...hechos, ...viejos])].slice(-400));
+  await s.set("config/limpieza-1", "1");
+}
 async function importarDiarios() {
   await pasarDiariosATuCuenta();
+  await limpiezaDiarios();
   const s = db(), hoy = hoyMX(), hechos: string[] = ((await s.get("config/diarios", { type: "json" })) as string[]) || [];
   const pend = Object.keys(diarios as Record<string, any[]>).filter(f => f.slice(0, 10) <= hoy && !hechos.includes(f)).sort();
   if (!pend.length) return;
