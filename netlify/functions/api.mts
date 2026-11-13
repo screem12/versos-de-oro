@@ -58,9 +58,18 @@ async function limpiezaDiarios() {
   await s.setJSON("config/diarios", [...new Set([...hechos, ...viejos])].slice(-400));
   await s.set("config/limpieza-1", "1");
 }
+// Si corrijo un poema diario en diarios.json y todavía está en revisión, se actualiza en la app.
+async function sincronizarDiarios() {
+  const desde = new Date(Date.now() - 6 * 3600e3 - 14 * 864e5).toISOString().slice(0, 10);
+  for (const [f, L] of Object.entries(diarios as Record<string, any[]>)) if (f.slice(0, 10) >= desde) for (const [i, x] of (L || []).slice(0, 10).entries()) {
+    const id = "d" + f.replace(/[^0-9]/g, "") + "abcdefghij"[i];
+    await mutate("poema/" + id, v => (v.casa && v.estado === "revision" && (v.texto !== txt(x.texto, 8000) || v.titulo !== txt(x.titulo, 120))) ? { ...v, titulo: txt(x.titulo, 120), texto: txt(x.texto, 8000) } : null);
+  }
+}
 async function importarDiarios() {
   await pasarDiariosATuCuenta();
   await limpiezaDiarios();
+  await sincronizarDiarios();
   const s = db(), hoy = hoyMX(), hechos: string[] = ((await s.get("config/diarios", { type: "json" })) as string[]) || [];
   const pend = Object.keys(diarios as Record<string, any[]>).filter(f => f.slice(0, 10) <= hoy && !hechos.includes(f)).sort();
   if (!pend.length) return;
