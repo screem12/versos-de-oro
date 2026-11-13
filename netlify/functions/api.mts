@@ -53,7 +53,7 @@ async function limpiezaDiarios() {
   const s = db(); if (await s.get("config/limpieza-1")) return;
   for (const x of await all("poema/")) if (x.casa && x.estado !== "papelera" && !String(x.id).startsWith("d" + TANDA_NUEVA.replace(/[^0-9]/g, "")))
     await s.setJSON("poema/" + x.id, { ...x, estado: "papelera", antes: x.estado, borradoAt: Date.now(), borradoPor: "admin" });
-  const viejos = Object.keys(diarios as Record<string, any[]>).filter(f => f !== TANDA_NUEVA);
+  const viejos = Object.keys(diarios as Record<string, any[]>).filter(f => f < TANDA_NUEVA);
   const hechos: string[] = ((await s.get("config/diarios", { type: "json" })) as string[]) || [];
   await s.setJSON("config/diarios", [...new Set([...hechos, ...viejos])].slice(-400));
   await s.set("config/limpieza-1", "1");
@@ -66,9 +66,18 @@ async function sincronizarDiarios() {
     await mutate("poema/" + id, v => (v.casa && v.estado === "revision" && (v.texto !== txt(x.texto, 8000) || v.titulo !== txt(x.titulo, 120))) ? { ...v, titulo: txt(x.titulo, 120), texto: txt(x.texto, 8000) } : null);
   }
 }
+// Reparación: si la limpieza marcó como «ya importados» días posteriores a la tanda nueva sin haberlos metido, se vuelven a importar.
+async function repararDiarios() {
+  const s = db(); if (await s.get("config/reparar-1")) return;
+  const hechos: string[] = ((await s.get("config/diarios", { type: "json" })) as string[]) || [];
+  const ok: string[] = [];
+  for (const f of hechos) { if (f <= TANDA_NUEVA || await s.get("poema/d" + f.replace(/[^0-9]/g, "") + "a")) ok.push(f); }
+  await s.setJSON("config/diarios", ok); await s.set("config/reparar-1", "1");
+}
 async function importarDiarios() {
   await pasarDiariosATuCuenta();
   await limpiezaDiarios();
+  await repararDiarios();
   await sincronizarDiarios();
   const s = db(), hoy = hoyMX(), hechos: string[] = ((await s.get("config/diarios", { type: "json" })) as string[]) || [];
   const pend = Object.keys(diarios as Record<string, any[]>).filter(f => f.slice(0, 10) <= hoy && !hechos.includes(f)).sort();
