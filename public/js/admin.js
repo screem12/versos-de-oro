@@ -23,10 +23,26 @@ function login(err = "") {
   $("#lf").onsubmit = async e => { e.preventDefault(); KEY = $("#k").value.trim(); try { await A("settings"); try { localStorage.setItem("vdo.admin", KEY); } catch { } load(); } catch (x) { login(x.status === 401 ? "Clave incorrecta" : x.message); } };
 }
 async function load() {
-  try { [R, { poemas: P }, { poetas: U }, S] = await Promise.all([A("resumen"), A("poemas"), A("poetas"), A("settings")]); RP = (await A("reportes")).reportes || []; }
+  try { let rp; [R, { poemas: P }, { poetas: U }, S, rp] = await Promise.all([A("resumen"), A("poemas"), A("poetas"), A("settings"), A("reportes")]); RP = rp.reportes || []; }
   catch (e) { if (e.status === 401) return login("Clave incorrecta"); return toast(e.message); }
   const y = scrollY; draw(); scrollTo(0, y);
 }
+// Cambios al instante en pantalla; el servidor se actualiza por detrás
+function aplicar(ids, acc) {
+  const S2 = new Set(ids);
+  if (acc === "borrar") P = P.filter(p => !S2.has(p.id));
+  else P = P.map(p => { if (!S2.has(p.id)) return p;
+    if (acc === "publicar") return p.estado === "papelera" ? p : { ...p, estado: "publicado", pubAt: p.pubAt || Date.now() };
+    if (acc === "papelera") return { ...p, estado: "papelera", antes: p.estado, borradoAt: Date.now(), borradoPor: "admin" };
+    if (acc === "recuperar") return { ...p, estado: ["publicado", "revision", "rechazado", "oculto"].includes(p.antes) ? p.antes : "revision" };
+    return { ...p, estado: acc };
+  });
+  R.pendientes = P.filter(p => p.estado === "revision").length; R.publicados = P.filter(p => p.estado === "publicado").length;
+  const y = scrollY; draw(); scrollTo(0, y);
+}
+let refrescando = null;
+function refrescar() { clearTimeout(refrescando); refrescando = setTimeout(async () => { try { const [r, { poemas }] = await Promise.all([A("resumen"), A("poemas")]); R = r; P = poemas; if (!selMode) { const y = scrollY; draw(); scrollTo(0, y); } } catch { } }, 1500); }
+async function lote(ids, accion) { aplicar(ids, accion); try { await A("poemas/lote", "POST", { ids, accion }); } catch (e) { toast(e.message); load(); return false; } refrescar(); return true; }
 function draw() {
   const rev = P.filter(p => p.estado === "revision"), pap = P.filter(p => p.estado === "papelera").sort((a, b) => b.borradoAt - a.borradoAt);
   const n = s => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
@@ -78,29 +94,21 @@ function draw() {
     const op = b.dataset.bulk, ids = [...sel]; if (!ids.length) return;
     const msg = { pub: "¿Publicar", del: "¿Mandar a la papelera", rec: "¿Recuperar", fin: "¿Borrar para siempre" }[op];
     if (b.dataset.k !== "1") { b.dataset.k = "1"; b.textContent = `${msg} ${ids.length}? Toca otra vez`; return; }
-    document.querySelectorAll("[data-bulk]").forEach(x => x.disabled = true); let ok = 0;
-    for (const id of ids) {
-      try {
-        if (op === "pub") await A("poemas/" + id, "PATCH", { estado: "publicado", nota: "" });
-        else if (op === "del") await A("poemas/" + id, "DELETE");
-        else if (op === "rec") await A("poemas/" + id + "/recuperar", "POST");
-        else await A("poemas/" + id + "?final=1", "DELETE");
-        ok++;
-      } catch (e) { toast(e.message); }
-    }
-    toast({ pub: `${ok} publicados ✦`, del: `${ok} enviados a la papelera`, rec: `${ok} recuperados`, fin: `${ok} borrados para siempre` }[op]);
-    salirSel(); load();
+    const acc = { pub: "publicar", del: "papelera", rec: "recuperar", fin: "borrar" }[op];
+    salirSel(); toast({ pub: `${ids.length} publicados ✦`, del: `${ids.length} enviados a la papelera`, rec: `${ids.length} recuperados`, fin: `${ids.length} borrados para siempre` }[op]);
+    lote(ids, acc);
   });
   const qi = $("#q"); if (qi) qi.oninput = () => { q = qi.value; const pos = qi.selectionStart; draw(); const n2 = $("#q"); n2.focus(); n2.setSelectionRange(pos, pos); };
   document.querySelectorAll("[data-st]").forEach(b => b.onclick = async () => {
     const id = b.dataset.id, estado = b.dataset.st, nota = $("#n_" + id)?.value || "";
     if (estado === "rechazado" && b.dataset.k !== "1") { b.dataset.k = "1"; b.textContent = "¿Seguro?"; return; }
-    try { await A("poemas/" + id, "PATCH", { estado, nota: estado === "publicado" ? "" : nota }); toast(estado === "publicado" ? "Publicado ✦" : estado === "rechazado" ? "Denegado" : estado === "oculto" ? "Retirado" : "Listo"); load(); } catch (e) { toast(e.message); }
+    aplicar([id], estado); toast(estado === "publicado" ? "Publicado ✦" : estado === "rechazado" ? "Denegado" : estado === "oculto" ? "Retirado" : "Listo");
+    try { await A("poemas/" + id, "PATCH", { estado, nota: estado === "publicado" ? "" : nota }); refrescar(); } catch (e) { toast(e.message); load(); }
   });
-  document.querySelectorAll("[data-del]").forEach(b => b.onclick = async () => { if (b.dataset.k !== "1") { b.dataset.k = "1"; b.textContent = b.textContent.includes("Denegar") ? "¿Seguro? Toca otra vez" : "¿Mandar a la papelera?"; return; } try { await A("poemas/" + b.dataset.del, "DELETE"); toast(b.textContent.includes("Seguro") ? "Denegado (quedó en la papelera)" : "Enviado a la papelera"); load(); } catch (e) { toast(e.message); } });
+  document.querySelectorAll("[data-del]").forEach(b => b.onclick = async () => { if (b.dataset.k !== "1") { b.dataset.k = "1"; b.textContent = b.textContent.includes("Denegar") ? "¿Seguro? Toca otra vez" : "¿Mandar a la papelera?"; return; } toast(b.textContent.includes("Seguro") ? "Denegado (quedó en la papelera)" : "Enviado a la papelera"); lote([b.dataset.del], "papelera"); });
   document.querySelectorAll("[data-rep]").forEach(b => b.onclick = async () => { try { await A("reportes/" + b.dataset.rep, "DELETE"); toast("Reporte cerrado"); load(); } catch (e) { toast(e.message); } });
-  document.querySelectorAll("[data-rec]").forEach(b => b.onclick = async () => { try { const r = await A("poemas/" + b.dataset.rec + "/recuperar", "POST"); toast("Recuperado: quedó " + (ET[r.poema.estado] || "").toLowerCase()); load(); } catch (e) { toast(e.message); } });
-  document.querySelectorAll("[data-fin]").forEach(b => b.onclick = async () => { if (b.dataset.k !== "1") { b.dataset.k = "1"; b.textContent = "¿Seguro? Ya no se podrá recuperar"; return; } try { await A("poemas/" + b.dataset.fin + "?final=1", "DELETE"); toast("Borrado para siempre"); load(); } catch (e) { toast(e.message); } });
+  document.querySelectorAll("[data-rec]").forEach(b => b.onclick = async () => { toast("Recuperado"); lote([b.dataset.rec], "recuperar"); });
+  document.querySelectorAll("[data-fin]").forEach(b => b.onclick = async () => { if (b.dataset.k !== "1") { b.dataset.k = "1"; b.textContent = "¿Seguro? Ya no se podrá recuperar"; return; } toast("Borrado para siempre"); lote([b.dataset.fin], "borrar"); });
   document.querySelectorAll("[data-dia]").forEach(b => b.onclick = async () => { try { S = await A("settings", "PUT", { diaManual: b.dataset.dia }); toast("Ahora es el poema del día"); load(); } catch (e) { toast(e.message); } });
   document.querySelectorAll("[data-clv]").forEach(b => b.onclick = () => {
     const box = b.closest(".adm"); if (box.querySelector(".clv")) return;
@@ -123,7 +131,7 @@ function draw() {
   document.querySelectorAll("[data-blq]").forEach(b => b.onclick = async () => { try { await A("poetas/" + b.dataset.blq, "PATCH", { bloqueado: !!b.dataset.v }); toast(b.dataset.v ? "Cuenta suspendida" : "Cuenta reactivada"); load(); } catch (e) { toast(e.message); } });
   const cr = $("#cRev"); if (cr) cr.onchange = async () => { try { S = await A("settings", "PUT", { revisar: cr.checked }); toast(cr.checked ? "Ahora revisas cada poema antes de publicarse" : "Los poemas se publican al instante"); } catch (e) { toast(e.message); } };
   const ba = $("#bAll"); if (ba) ba.onclick = async () => { if (ba.dataset.k !== "1") { ba.dataset.k = "1"; ba.textContent = "¿Publicar todos? Toca otra vez"; return; } ba.disabled = true;
-    try { for (const p of P.filter(x => x.estado === "revision")) await A("poemas/" + p.id, "PATCH", { estado: "publicado", nota: "" }); toast("Todos publicados ✦"); } catch (e) { toast(e.message); } load(); };
+    const ids = P.filter(x => x.estado === "revision").map(x => x.id); toast(`${ids.length} publicados ✦`); lote(ids, "publicar"); };
   const av = $("#bAv"); if (av) av.onclick = async () => {
     try {
       if (!("PushManager" in window)) return toast("Este navegador no permite avisos. Abre la app instalada o Chrome.");

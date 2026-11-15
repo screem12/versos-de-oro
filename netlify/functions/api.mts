@@ -60,10 +60,11 @@ async function limpiezaDiarios() {
 }
 // Si corrijo un poema diario en diarios.json y todavía está en revisión, se actualiza en la app.
 async function sincronizarDiarios() {
-  const desde = new Date(Date.now() - 6 * 3600e3 - 14 * 864e5).toISOString().slice(0, 10);
-  for (const [f, L] of Object.entries(diarios as Record<string, any[]>)) if (f.slice(0, 10) >= desde) for (const [i, x] of (L || []).slice(0, 10).entries()) {
-    const id = "d" + f.replace(/[^0-9]/g, "") + "abcdefghij"[i];
-    await mutate("poema/" + id, v => (v.casa && v.estado === "revision" && (v.texto !== txt(x.texto, 8000) || v.titulo !== txt(x.titulo, 120))) ? { ...v, titulo: txt(x.titulo, 120), texto: txt(x.texto, 8000) } : null);
+  const desde = new Date(Date.now() - 6 * 3600e3 - 14 * 864e5).toISOString().slice(0, 10), want = new Map<string, any>();
+  for (const [f, L] of Object.entries(diarios as Record<string, any[]>)) if (f.slice(0, 10) >= desde) (L || []).slice(0, 10).forEach((x, i) => want.set("d" + f.replace(/[^0-9]/g, "") + "abcdefghij"[i], x));
+  if (!want.size) return;
+  for (const v of await all("poema/")) { const x = want.get(v.id);
+    if (x && v.casa && v.estado === "revision" && (v.texto !== txt(x.texto, 8000) || v.titulo !== txt(x.titulo, 120))) await db().setJSON("poema/" + v.id, { ...v, titulo: txt(x.titulo, 120), texto: txt(x.texto, 8000) });
   }
 }
 // Reparación: si la limpieza marcó como «ya importados» días posteriores a la tanda nueva sin haberlos metido, se vuelven a importar.
@@ -301,7 +302,7 @@ async function route(req: Request, ctx: Context) {
   /* ===== administrador (tú) ===== */
   if (p[0] === "admin") {
     if (!(await isAdmin(req))) return fail("Clave de administrador incorrecta", 401);
-    try { await importarDiarios(); } catch (e) { console.error("diarios", e); }
+    if (p[1] === "resumen") { try { await importarDiarios(); } catch (e) { console.error("diarios", e); } }
     if (p[1] === "resumen" && M === "GET") {
       const L = await all("poema/"), U = await all("poeta/"), s = await settings();
       const pub = L.filter(x => x.estado === "publicado"), dia = poemaDelDia(pub, s.diaManual);
@@ -315,6 +316,25 @@ async function route(req: Request, ctx: Context) {
     if (p[1] === "reportes" && M === "GET") return json({ reportes: (await all("rep/")).sort((a, b) => b.at - a.at) });
     if (p[1] === "reportes" && p[2] && M === "DELETE") { await db().delete("rep/" + String(p[2]).replace(/[^a-z0-9]/g, "")); return json({ ok: true }); }
     if (p[1] === "poemas" && M === "GET") return json({ poemas: (await all("poema/")).sort((a, b) => b.at - a.at).map(pubPoema) });
+    // Varios poemas a la vez: publicar, mandar a la papelera, recuperar o borrar para siempre
+    if (p[1] === "poemas" && p[2] === "lote" && M === "POST") {
+      const b = await body(), ids = (Array.isArray(b.ids) ? b.ids : []).map((x: any) => String(x).replace(/[^a-z0-9]/g, "")).filter(Boolean).slice(0, 300), acc = String(b.accion || "");
+      if (!["publicar", "papelera", "recuperar", "borrar"].includes(acc)) return fail("Acción no válida");
+      let ok = 0; const pub: any[] = [];
+      await Promise.all(ids.map(async (id: string) => {
+        try {
+          if (acc === "borrar") { await db().delete("poema/" + id); ok++; return; }
+          const x = await mutate("poema/" + id, v => {
+            if (acc === "publicar") return v.estado === "publicado" || v.estado === "papelera" ? null : { ...v, estado: "publicado", nota: "", pubAt: v.pubAt || Date.now(), _antes: v.estado };
+            if (acc === "papelera") return v.estado === "papelera" ? null : { ...v, estado: "papelera", antes: v.estado, borradoAt: Date.now(), borradoPor: "admin" };
+            return v.estado !== "papelera" ? null : { ...v, estado: ["publicado", "revision", "rechazado", "oculto"].includes(v.antes) ? v.antes : "revision", antes: undefined, borradoAt: undefined, borradoPor: undefined };
+          });
+          if (x) { ok++; if (acc === "publicar" && x._antes !== undefined) pub.push(x); }
+        } catch (e) { console.error("lote", id, e); }
+      }));
+      for (const x of pub) { const { _antes, ...limpio } = x; const y = await certificar(limpio); await db().setJSON("poema/" + y.id, y); luego(anunciarPoema(y)); }
+      return json({ ok });
+    }
     if (p[1] === "poemas" && p[2] && M === "PATCH") {
       const b = await body(), id = String(p[2]).replace(/[^a-z0-9]/g, "");
       let antes = "";
