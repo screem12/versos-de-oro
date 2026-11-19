@@ -64,7 +64,7 @@ async function sincronizarDiarios() {
   for (const [f, L] of Object.entries(diarios as Record<string, any[]>)) if (f.slice(0, 10) >= desde) (L || []).slice(0, 10).forEach((x, i) => want.set("d" + f.replace(/[^0-9]/g, "") + "abcdefghij"[i], x));
   if (!want.size) return;
   for (const v of await all("poema/")) { const x = want.get(v.id);
-    if (x && v.casa && v.estado === "revision" && (v.texto !== txt(x.texto, 8000) || v.titulo !== txt(x.titulo, 120))) await db().setJSON("poema/" + v.id, { ...v, titulo: txt(x.titulo, 120), texto: txt(x.texto, 8000) });
+    if (x && v.casa && !v.editadoAdmin && v.estado === "revision" && (v.texto !== txt(x.texto, 8000) || v.titulo !== txt(x.titulo, 120))) await db().setJSON("poema/" + v.id, { ...v, titulo: txt(x.titulo, 120), texto: txt(x.texto, 8000) });
   }
 }
 // Reparación: si la limpieza marcó como «ya importados» días posteriores a la tanda nueva sin haberlos metido, se vuelven a importar.
@@ -342,6 +342,11 @@ async function route(req: Request, ctx: Context) {
         antes = v.estado; const n = { ...v };
         if (["publicado", "revision", "rechazado", "oculto"].includes(b.estado)) { n.estado = b.estado; if (b.estado === "publicado" && !v.pubAt) n.pubAt = Date.now(); }
         if (b.nota !== undefined) n.nota = txt(b.nota, 300);
+        // editar el poema (título, tema y versos)
+        if (b.titulo !== undefined) { const t = txt(b.titulo, 120); if (t) n.titulo = t; }
+        if (b.texto !== undefined) { const t = txt(b.texto, 8000).replace(/\n{4,}/g, "\n\n\n"); if (t.length >= 20) n.texto = t; }
+        if (b.tema !== undefined && TEMAS.includes(b.tema)) n.tema = b.tema;
+        if (b.titulo !== undefined || b.texto !== undefined || b.tema !== undefined) { n.editadoAdmin = true; n.editado = Date.now(); }
         return n;
       });
       if (!x) return fail("Ese poema no existe", 404);

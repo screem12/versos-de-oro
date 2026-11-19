@@ -106,6 +106,22 @@ function draw() {
     try { await A("poemas/" + id, "PATCH", { estado, nota: estado === "publicado" ? "" : nota }); refrescar(); } catch (e) { toast(e.message); load(); }
   });
   document.querySelectorAll("[data-del]").forEach(b => b.onclick = async () => { if (b.dataset.k !== "1") { b.dataset.k = "1"; b.textContent = b.textContent.includes("Denegar") ? "¿Seguro? Toca otra vez" : "¿Mandar a la papelera?"; return; } toast(b.textContent.includes("Seguro") ? "Denegado (quedó en la papelera)" : "Enviado a la papelera"); lote([b.dataset.del], "papelera"); });
+  document.querySelectorAll("[data-edit]").forEach(b => b.onclick = () => {
+    const box = b.closest(".adm"); if (box.querySelector(".edf")) return; const p = P.find(x => x.id === b.dataset.edit); if (!p) return;
+    box.querySelector(".v").hidden = true; b.closest(".acts").hidden = true;
+    box.insertAdjacentHTML("beforeend", `<form class="edf form" novalidate style="gap:10px;margin-top:6px">
+      <input class="ed-t" maxlength="120" value="${esc(p.titulo)}" aria-label="Título" style="font:700 22px var(--serif);text-align:center">
+      <select class="ed-m" aria-label="Tema">${Object.entries(TEMAS).map(([k, n]) => `<option value="${k}" ${p.tema === k ? "selected" : ""}>${n}</option>`).join("")}</select>
+      <textarea class="ed-x" maxlength="8000" aria-label="Poema" style="font:500 18px/1.6 var(--serif);text-align:center;min-height:300px">${esc(p.texto)}</textarea>
+      <div class="acts" style="justify-content:center"><button class="btn sm gold-b" type="submit">Guardar cambios</button><button class="btn sm" type="button" data-cx>Cancelar</button></div></form>`);
+    const f = box.querySelector(".edf"), ta = f.querySelector(".ed-x"); ta.style.height = Math.max(300, ta.scrollHeight + 6) + "px"; ta.focus();
+    f.querySelector("[data-cx]").onclick = () => { const y = scrollY; draw(); scrollTo(0, y); };
+    f.onsubmit = async e => { e.preventDefault(); const titulo = f.querySelector(".ed-t").value.trim(), texto = ta.value, tema = f.querySelector(".ed-m").value;
+      if (!titulo) return toast("Ponle título"); if (texto.trim().length < 20) return toast("El poema está muy corto");
+      const btn = f.querySelector("[type=submit]"); btn.disabled = true; btn.textContent = "Guardando…";
+      try { const r = await A("poemas/" + p.id, "PATCH", { titulo, texto, tema }); P = P.map(x => x.id === p.id ? { ...x, ...r.poema } : x); toast("Cambios guardados ✦"); const y = scrollY; draw(); scrollTo(0, y); }
+      catch (x) { toast(x.message); btn.disabled = false; btn.textContent = "Guardar cambios"; } };
+  });
   document.querySelectorAll("[data-rep]").forEach(b => b.onclick = async () => { try { await A("reportes/" + b.dataset.rep, "DELETE"); toast("Reporte cerrado"); load(); } catch (e) { toast(e.message); } });
   document.querySelectorAll("[data-rec]").forEach(b => b.onclick = async () => { toast("Recuperado"); lote([b.dataset.rec], "recuperar"); });
   document.querySelectorAll("[data-fin]").forEach(b => b.onclick = async () => { if (b.dataset.k !== "1") { b.dataset.k = "1"; b.textContent = "¿Seguro? Ya no se podrá recuperar"; return; } toast("Borrado para siempre"); lote([b.dataset.fin], "borrar"); });
@@ -153,7 +169,7 @@ function item(p, rev) {
     ${p.parecido ? `<div class="box" style="border-color:#ff8f7a88;margin:4px 0;padding:10px 12px"><b style="color:#ffb59f">⚠️ Posible plagio: se parece ${p.parecido.pct}% a «${esc(p.parecido.titulo)}» de ${esc(p.parecido.alias)}</b><br><a class="note" href="/#/poema/${esc(p.parecido.id)}" target="_blank" style="color:var(--gold2)">Comparar con el original</a></div>` : ""}
     <div class="v">${esc(p.texto)}</div>${p.cert ? `<small class="note" style="margin:0">Certificado: <b style="color:var(--gold2)">${esc(p.cert)}</b></small>` : ""}
     ${p.casa ? `<span class="estado publicado" style="width:max-content">✦ Poema diario para MR.CH</span>` : ""}${!p.casa && (rev || p.estado !== "publicado") ? `<input id="n_${p.id}" placeholder="Nota para el poeta si no lo apruebas (opcional)" value="${esc(p.nota)}">` : ""}
-    ${selMode ? "" : `<div class="acts">${p.estado !== "publicado" ? `<button class="btn sm gold-b" data-st="publicado" data-id="${p.id}">✓ Publicar</button>` : `<a class="btn sm" href="/#/poema/${p.id}" target="_blank">Ver</a><button class="btn sm" data-dia="${p.id}">Poema del día</button><button class="btn sm" data-st="oculto" data-id="${p.id}">Retirar</button>`}
+    ${selMode ? "" : `<div class="acts"><button class="btn sm" data-edit="${p.id}">✏️ Editar</button>${p.estado !== "publicado" ? `<button class="btn sm gold-b" data-st="publicado" data-id="${p.id}">✓ Publicar</button>` : `<a class="btn sm" href="/#/poema/${p.id}" target="_blank">Ver</a><button class="btn sm" data-dia="${p.id}">Poema del día</button><button class="btn sm" data-st="oculto" data-id="${p.id}">Retirar</button>`}
       ${p.estado === "revision" ? (p.casa ? `<button class="btn sm" data-del="${p.id}">✕ Denegar</button>` : `<button class="btn sm" data-st="rechazado" data-id="${p.id}">✕ Denegar</button>`) : ""}${p.casa && p.estado === "revision" ? "" : `<button class="btn sm" data-del="${p.id}">Borrar</button>`}</div>`}</div>`;
 }
 KEY || DUENO ? load() : login();
