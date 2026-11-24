@@ -16,7 +16,7 @@ const I = {
   dl: '<path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/>'
 };
 const ico = (k, fill) => `<svg viewBox="0 0 24 24" fill="${fill ? "currentColor" : "none"}" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${I[k]}</svg>`;
-const st = { poemas: [], dia: null, ready: false, tema: "", q: "", orden: "nuevos", sesion: LS.get("sesion", null), oros: LS.get("oros", []), size: LS.get("size", 20), centro: LS.get("centro", false) };
+const st = { poemas: [], dia: null, ready: false, tema: "", q: "", orden: "nuevos", sesion: LS.get("sesion", null), oros: LS.get("oros", []), sigo: LS.get("sigo", []), size: LS.get("size", 20), centro: LS.get("centro", false) };
 const device = LS.get("device", null) || (() => { const d = "d" + crypto.getRandomValues(new Uint32Array(3)).join("-"); LS.set("device", d); return d; })();
 const byId = id => st.poemas.find(p => p.id === id);
 const fecha = t => new Date(t).toLocaleDateString("es-MX", { day: "numeric", month: "long", year: "numeric" });
@@ -50,6 +50,8 @@ function home() {
   return `<div class="wrap">${topbar()}
     ${d ? `<a class="dia" href="#/poema/${d.id}"><span class="q">“</span><span class="lbl">✦ Poema del día</span><h1>${esc(d.titulo)}</h1><div class="v">${esc(d.texto)}</div><div class="by">de <b>${esc(d.alias)}</b> · <span class="oro">${ico("oro", 1)}${d.oros}</span></div></a>`
       : `<div class="dia"><span class="lbl">✦ Bienvenido</span><h1>Aquí empieza la casa de los poetas</h1><div class="v">Escribe tu primer poema y ocupa el primer lugar en Versos de Oro.</div><div style="margin-top:16px"><a class="btn gold-b" href="#/escribir">${ico("pen")}Escribir un poema</a></div></div>`}
+    ${(() => { const L = P.filter(p => st.sigo.includes(p.autor)).slice(0, 6); return st.sigo.length ? `<h2 class="sec">De los poetas que sigues</h2>${L.length ? `<div class="list">${L.map(card).join("")}</div>` : `<p class="note">Todavía no publican poemas nuevos.</p>`}` : ""; })()}
+    ${P.length > 1 ? `<div style="text-align:center;margin-top:16px"><button class="btn" id="bAzar">✦ Léeme un poema al azar</button></div>` : ""}
     <div class="orn"><span>Temas</span></div>
     <div class="chips">${Object.entries(TEMAS).map(([k, n]) => `<a href="#/explorar?tema=${k}">${n}</a>`).join("")}</div>
     ${P.length ? `<h2 class="sec">Recién publicados <a href="#/explorar">Ver todos</a></h2><div class="list">${P.slice(0, 6).map(card).join("")}</div>` : ""}
@@ -97,7 +99,7 @@ function leer(id, p) {
     <div class="fin">✦ ✦ ✦</div>
     ${p.cert ? `<a class="cert" href="#/certificado/${esc(p.cert)}"><b>© ${esc(p.alias)}</b> · Todos los derechos reservados<br>Registrado en Versos de Oro el ${fecha(p.pubAt)}<br><span class="code">${esc(p.cert)}</span> · <u>Verificar</u></a>` : ""}
     <p style="text-align:center;margin:14px 0 0"><a class="rep" href="#/reportar?poema=${esc(p.id)}">⚠️ ¿Viste este poema copiado en otro lado? Repórtalo</a></p>
-    <div class="tsize"><button class="btn sm" data-sz="-2" aria-label="Letra más chica">A−</button><button class="btn sm" data-sz="2" aria-label="Letra más grande">A+</button></div>
+    <div class="tsize"><button class="btn sm" data-sz="-2" aria-label="Letra más chica">A−</button><button class="btn sm" data-sz="2" aria-label="Letra más grande">A+</button>${"speechSynthesis" in window ? `<button class="btn sm" id="bVoz">🔊 <span>Escuchar</span></button>` : ""}</div>
     <div class="bar"><button class="btn oro-b" id="bOro" aria-pressed="${dado}">${ico("oro", 1)}<span>${p.oros}</span></button><button class="btn" id="bImg">${ico("img")}Imagen</button><button class="btn" id="bSh">${ico("share")}Compartir</button></div>
   </div>`;
 }
@@ -113,7 +115,32 @@ function afterLeer(p) {
   };
   $("#bSh").onclick = async () => { const url = location.origin + "/#/poema/" + p.id; try { if (navigator.share) await navigator.share({ title: p.titulo + " · Versos de Oro", text: `«${p.titulo}», de ${p.alias}`, url }); else { await navigator.clipboard.writeText(url); toast("Link copiado"); } } catch { } };
   $("#bImg").onclick = () => tarjeta(p);
+  st.ultimo = p.id;
+  const bv = $("#bVoz"); if (bv) bv.onclick = () => recitar(p, bv);
 }
+
+/* ================= escuchar el poema (voz del celular, de preferencia masculina) ================= */
+function vozRecitador() {
+  const vs = speechSynthesis.getVoices().filter(v => /^es/i.test(v.lang));
+  const hombre = /jorge|diego|juan|pablo|carlos|enrique|andr[eé]s|ra[uú]l|alvaro|álvaro|miguel|antonio|male|hombre/i;
+  return vs.find(v => hombre.test(v.name) && /MX|419|US/i.test(v.lang)) || vs.find(v => hombre.test(v.name)) || vs.find(v => /MX|419/i.test(v.lang)) || vs[0] || null;
+}
+function recitar(p, btn) {
+  const sp = speechSynthesis;
+  const set = on => { if (btn.isConnected) btn.querySelector("span").textContent = on ? "Detener" : "Escuchar"; };
+  if (sp.speaking) { sp.cancel(); set(false); return; }
+  const voz = vozRecitador();
+  // verso por verso, con pausa entre estrofas, para que suene recitado
+  const versos = [p.titulo + ".", ...String(p.texto).split("\n")].map(v => v.trim());
+  versos.forEach((v, i) => {
+    const u = new SpeechSynthesisUtterance(v || " ");
+    u.lang = voz?.lang || "es-MX"; if (voz) u.voice = voz; u.rate = 0.86; u.pitch = 0.9;
+    if (i === versos.length - 1) u.onend = () => set(false);
+    sp.speak(u);
+  });
+  set(true);
+}
+if ("speechSynthesis" in window) speechSynthesis.getVoices();
 
 /* ================= tarjeta para redes (negro y oro) ================= */
 async function tarjeta(p) {
@@ -152,8 +179,9 @@ async function poeta(slug) {
     const { poeta: u, poemas } = await api("poeta/" + encodeURIComponent(slug), "GET", null, true), oros = poemas.reduce((a, p) => a + p.oros, 0);
     app.innerHTML = `<div class="wrap">${topbar()}<div class="prof"><div class="av">${esc(u.alias[0] || "V").toUpperCase()}</div><h1>${esc(u.alias)}</h1>${u.ciudad ? `<p>${esc(u.ciudad)}</p>` : ""}${u.bio ? `<p style="font:500 italic 19px/1.45 var(--serif);color:#d8cfb6">${esc(u.bio)}</p>` : ""}
       <div class="stats"><div><b>${poemas.length}</b><small>Poemas</small></div><div><b>${oros}</b><small>Oros</small></div><div><b>${new Date(u.at).getFullYear()}</b><small>Desde</small></div></div>
-      <button class="btn sm" id="bShP" style="margin-top:8px">${ico("link")}Compartir perfil</button></div>
+      <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:8px"><button class="btn sm ${st.sigo.includes(u.slug) ? "" : "gold-b"}" id="bSigo" aria-pressed="${st.sigo.includes(u.slug)}">${st.sigo.includes(u.slug) ? "✓ Siguiendo" : "+ Seguir"}</button><button class="btn sm" id="bShP">${ico("link")}Compartir perfil</button></div></div>
       <div class="orn"><span>Su obra</span></div><div class="list">${poemas.length ? poemas.map(card).join("") : `<p class="empty">Aún no publica poemas.</p>`}</div></div>`;
+    $("#bSigo").onclick = e => { const b = e.currentTarget, on = !st.sigo.includes(u.slug); st.sigo = on ? [...st.sigo, u.slug] : st.sigo.filter(x => x !== u.slug); LS.set("sigo", st.sigo); b.textContent = on ? "✓ Siguiendo" : "+ Seguir"; b.classList.toggle("gold-b", !on); b.setAttribute("aria-pressed", on); toast(on ? `Sigues a ${u.alias}: sus poemas nuevos salen en tu inicio` : "Dejaste de seguir a " + u.alias); };
     $("#bShP").onclick = async () => { const url = location.origin + "/#/poeta/" + u.slug; try { if (navigator.share) await navigator.share({ title: u.alias + " · Versos de Oro", url }); else { await navigator.clipboard.writeText(url); toast("Link copiado"); } } catch { } };
   } catch (e) { app.innerHTML = `<div class="wrap">${topbar()}<p class="empty">${esc(e.message)}</p></div>`; }
 }
@@ -350,6 +378,7 @@ async function route() {
   if (!st.ready) return;
   const h = location.hash || "#/", [path, qs] = h.slice(1).split("?"), params = new URLSearchParams(qs || ""), app = $("#app");
   document.querySelectorAll(".sheet").forEach(s => s.remove());
+  if ("speechSynthesis" in window && speechSynthesis.speaking) speechSynthesis.cancel();
   scrollTo(0, 0);
   if (path.startsWith("/poema/")) {
     const id = decodeURIComponent(path.slice(7)); tabbar(""); let p = byId(id);
@@ -364,7 +393,7 @@ async function route() {
   else if (path === "/escribir") { tabbar("#/escribir"); escribir(params); }
   else if (path === "/oros") { tabbar("#/oros"); app.innerHTML = oros(); }
   else if (path === "/cuaderno") { tabbar("#/cuaderno"); cuaderno(); }
-  else { tabbar("#/"); app.innerHTML = home(); }
+  else { tabbar("#/"); app.innerHTML = home(); const az = $("#bAzar"); if (az) az.onclick = () => { const P = st.poemas.filter(p => p.id !== st.ultimo); location.hash = "#/poema/" + P[Math.floor(Math.random() * P.length)].id; }; }
 }
 async function load2() { const d = await api("poemas", "GET", null, true); st.poemas = d.poemas; st.dia = d.dia; }
 addEventListener("hashchange", route);
